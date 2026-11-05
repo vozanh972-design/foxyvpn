@@ -1,13 +1,10 @@
 package com.example.foxy.ui.home
 
 import android.app.Application
+import android.content.BroadcastReceiver
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
-import android.net.ConnectivityManager
-import android.net.Network
-import android.net.NetworkCapabilities
-import android.net.NetworkRequest
 import android.net.VpnService
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
@@ -56,51 +53,37 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
     private var elapsedJob: Job? = null
     private var connectTimeoutJob: Job? = null
 
-    // ─── ConnectivityManager callback — đọc VPN state thực ───────────────────
-    // Pigboy dùng ConnectivityManager để kiểm tra VPN interface đã được tạo chưa
-    // (Landroid/net/ConnectivityManager; — đọc từ classes.dex của Pigboy)
-    private val connectivityManager =
-        app.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
-
-    private val vpnNetworkCallback = object : ConnectivityManager.NetworkCallback() {
-        override fun onAvailable(network: Network) {
-            // VPN network đã up → chuyển sang Connected
-            val caps = connectivityManager.getNetworkCapabilities(network)
-            if (caps?.hasTransport(NetworkCapabilities.TRANSPORT_VPN) == true) {
-                connectTimeoutJob?.cancel()
-                viewModelScope.launch {
+    // ─── BroadcastReceiver nhận state từ FreefireVpnService ─────────────────
+    // VpnService gửi broadcast với `package` = packageName (restricted)
+    // ConnectivityManager.NetworkCallback cũng detect VPN network
+    private val vpnReceiver = object : BroadcastReceiver() {
+        override fun onReceive(ctx: Context?, intent: Intent?) {
+            if (intent?.action != FreefireVpnService.BROADCAST_STATE) return
+            val connected = intent.getBooleanExtra(FreefireVpnService.EXTRA_CONNECTED, false)
+            connectTimeoutJob?.cancel()
+            viewModelScope.launch {
+                if (connected && _state.value.status == ConnectionStatus.Connecting) {
                     _state.update { it.copy(status = ConnectionStatus.Connected) }
                     startElapsedTimer()
                     startFakeStats()
-                    // ✅ Mở game Free Fire sau khi VPN kết nối thật
-                    delay(500)
+                    delay(300)
                     launchFreeFire(getApplication())
-                }
-            }
-        }
-
-        override fun onLost(network: Network) {
-            val caps = connectivityManager.getNetworkCapabilities(network)
-            // Chỉ xử lý khi mất VPN network
-            if (caps == null) {
-                viewModelScope.launch {
-                    if (_state.value.status != ConnectionStatus.Idle) {
-                        onVpnStopped()
-                    }
+                } else if (!connected) {
+                    onVpnStopped()
                 }
             }
         }
     }
 
     init {
-        // Đăng ký lắng nghe VPN network
-        try {
-            val request = NetworkRequest.Builder()
-                .addTransportType(NetworkCapabilities.TRANSPORT_VPN)
-                .removeCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
-                .build()
-            connectivityManager.registerNetworkCallback(request, vpnNetworkCallback)
-        } catch (_: Exception) {}
+        // Đăng ký BroadcastReceiver nhận state từ FreefireVpnService
+        val filter = android.content.IntentFilter(FreefireVpnService.BROADCAST_STATE)
+        ContextCompat.registerReceiver(
+            app,
+            vpnReceiver,
+            filter,
+            ContextCompat.RECEIVER_NOT_EXPORTED,
+        )
     }
 
     // ─── Nút nguồn ─────────────────────────────────────────────────────────────
@@ -262,7 +245,7 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
 
     override fun onCleared() {
         super.onCleared()
-        try { connectivityManager.unregisterNetworkCallback(vpnNetworkCallback) } catch (_: Exception) {}
+        try { getApplication<Application>().unregisterReceiver(vpnReceiver) } catch (_: Exception) {}
         connectTimeoutJob?.cancel()
         elapsedJob?.cancel()
         statsJob?.cancel()

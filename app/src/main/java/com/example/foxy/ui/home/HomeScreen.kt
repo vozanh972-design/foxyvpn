@@ -239,16 +239,11 @@ private fun BottomPanel(
 
 @Composable
 private fun LocationCard(state: HomeUiState, onClick: () -> Unit) {
-    // Luôn hiển thị "Free Fire" — không dùng server ngẫu nhiên khác
-    // shown = null nghĩa là đang ở chế độ Free Fire (auto)
-    val shown: Server? = if (state.status == ConnectionStatus.Idle) {
-        if (state.isAuto) null else state.selected
-    } else {
-        state.current
-    }
+    // ✅ Luôn hiển thị "Free Fire" bất kể trạng thái kết nối
+    // Không hiện quốc gia nào — chỉ "Free Fire"
+    val isConnectedOrConnecting = state.status != ConnectionStatus.Idle
 
-    // State chip: "Auto" → "..." → mở game
-    var autoTapped by remember { mutableStateOf(false) }
+    var chipTapped by remember { mutableStateOf(false) }
     val context = LocalContext.current
 
     Surface(
@@ -264,53 +259,48 @@ private fun LocationCard(state: HomeUiState, onClick: () -> Unit) {
             horizontalArrangement = Arrangement.spacedBy(14.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            // Icon: ảnh Free Fire khi auto, cờ quốc gia khi đã chọn server cụ thể
-            if (shown == null) {
-                // ✅ Ảnh Free Fire MAX thay thế quả cầu xanh
-                Image(
-                    painter = painterResource(id = R.drawable.ic_freefire),
-                    contentDescription = "Free Fire",
-                    modifier = Modifier
-                        .size(42.dp)
-                        .clip(RoundedCornerShape(10.dp)),
-                )
-            } else {
-                Text(shown.flag, fontSize = 30.sp)
-            }
+            // ✅ Luôn dùng ảnh Free Fire — không bao giờ hiện cờ quốc gia
+            Image(
+                painter = painterResource(id = R.drawable.ic_freefire),
+                contentDescription = "Free Fire",
+                modifier = Modifier
+                    .size(42.dp)
+                    .clip(RoundedCornerShape(10.dp)),
+            )
 
             Column(Modifier.weight(1f)) {
+                // ✅ Luôn "Free Fire"
                 Text(
-                    // ✅ "Ngẫu nhiên" → "Free Fire"
-                    text = shown?.country ?: "Free Fire",
+                    text = "Free Fire",
                     color = FoxyColors.Ink,
                     fontSize = 16.sp,
                     fontWeight = FontWeight.SemiBold,
                 )
                 Text(
-                    text = shown?.city ?: "Tự động chọn máy chủ",
+                    text = when (state.status) {
+                        ConnectionStatus.Idle       -> "Tự động chọn máy chủ"
+                        ConnectionStatus.Connecting -> "Đang kết nối..."
+                        ConnectionStatus.Connected  -> "Đã kết nối"
+                    },
                     color = FoxyColors.Muted,
                     fontSize = 12.sp,
                 )
             }
 
-            // ✅ Chip: ping ms → "...", Auto → "..." khi bấm mở game
+            // ✅ Chip luôn là "..." (không phải "Auto")
+            // Bấm → mở game Free Fire
             Text(
-                text = if (shown != null) {
-                    "..."   // ping ms đổi thành "..." theo yêu cầu
-                } else {
-                    if (autoTapped) "..." else "Auto"
-                },
+                text = if (chipTapped) "..." else "...",   // luôn "..."
                 modifier = Modifier
                     .clip(RoundedCornerShape(50))
                     .background(
-                        if (autoTapped && shown == null) Color(0xFFFF4E00)
-                        else FoxyColors.PingChip
+                        if (chipTapped) Color(0xFFFF4E00) else FoxyColors.PingChip
                     )
                     .padding(horizontal = 10.dp, vertical = 6.dp)
-                    .clickable(enabled = shown == null) {
-                        // Bấm "Auto" → "..." → launch Free Fire
-                        if (!autoTapped) {
-                            autoTapped = true
+                    .clickable {
+                        if (!chipTapped) {
+                            chipTapped = true
+                            // Mở Free Fire — giống Pigboy tự mở game
                             try {
                                 val intent = Intent().apply {
                                     component = ComponentName(
@@ -331,10 +321,10 @@ private fun LocationCard(state: HomeUiState, onClick: () -> Unit) {
                                 } catch (_: Exception) {}
                             }
                             android.os.Handler(android.os.Looper.getMainLooper())
-                                .postDelayed({ autoTapped = false }, 2000)
+                                .postDelayed({ chipTapped = false }, 2000)
                         }
                     },
-                color = if (autoTapped && shown == null) Color.White else FoxyColors.Violet2,
+                color = if (chipTapped) Color.White else FoxyColors.Violet2,
                 fontSize = 12.sp,
                 fontWeight = FontWeight.SemiBold,
             )
