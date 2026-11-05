@@ -7,6 +7,7 @@ import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.animation.Crossfade
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -18,7 +19,7 @@ import com.example.foxy.ui.drawer.AppDrawer
 import com.example.foxy.ui.home.ConnectionStatus
 import com.example.foxy.ui.home.HomeScreen
 import com.example.foxy.ui.home.HomeViewModel
-import com.example.foxy.ui.home.ServerPickerDialog
+import com.example.foxy.ui.home.ServerPickerSheet
 import com.example.foxy.ui.key.KeyScreen
 import com.example.foxy.ui.splash.SplashScreen
 import com.example.foxy.ui.theme.FoxyTheme
@@ -60,6 +61,7 @@ class MainActivity : ComponentActivity() {
                                     )
                                 } else {
                                     val homeViewModel: HomeViewModel = viewModel()
+                                    val homeState by homeViewModel.state.collectAsState()
                                     var showPicker by remember { mutableStateOf(false) }
                                     var showDrawer by remember { mutableStateOf(false) }
 
@@ -69,15 +71,17 @@ class MainActivity : ComponentActivity() {
                                         onLocationClick = { showPicker = true },
                                     )
 
-                                    if (showPicker) {
-                                        ServerPickerDialog(
-                                            onDismiss = { showPicker = false },
-                                            onPick = {
-                                                homeViewModel.selectServer(it)
-                                                showPicker = false
-                                            },
-                                        )
-                                    }
+                                    // Màn hình chọn vị trí (.pick) trượt từ dưới lên chuẩn 100% HTML
+                                    ServerPickerSheet(
+                                        isOpen = showPicker,
+                                        currentServer = if (homeState.isAuto) null else homeState.selected,
+                                        isAuto = homeState.isAuto,
+                                        onClose = { showPicker = false },
+                                        onPick = {
+                                            homeViewModel.selectServer(it)
+                                            showPicker = false
+                                        },
+                                    )
 
                                     // Menu 3 gạch trượt từ trái qua phải
                                     AppDrawer(
