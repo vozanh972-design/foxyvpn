@@ -106,7 +106,7 @@ fun HomeContent(
 @Composable
 private fun TopBar(state: HomeUiState, onMenuClick: () -> Unit, modifier: Modifier = Modifier) {
     val protected = state.status == ConnectionStatus.Connected
-    val chipText = if (protected) "Đã bảo vệ · ${state.current?.country.orEmpty()}" else "Chưa được bảo vệ"
+    val chipText = if (protected) "Đang bảo vệ" else "Chưa được bảo vệ"
 
     Row(
         modifier

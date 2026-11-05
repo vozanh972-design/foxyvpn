@@ -14,6 +14,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.foxy.data.KeyStore
+import com.example.foxy.ui.drawer.AppDrawer
+import com.example.foxy.ui.home.ConnectionStatus
 import com.example.foxy.ui.home.HomeScreen
 import com.example.foxy.ui.home.HomeViewModel
 import com.example.foxy.ui.home.ServerPickerDialog
@@ -59,10 +61,11 @@ class MainActivity : ComponentActivity() {
                                 } else {
                                     val homeViewModel: HomeViewModel = viewModel()
                                     var showPicker by remember { mutableStateOf(false) }
+                                    var showDrawer by remember { mutableStateOf(false) }
 
                                     HomeScreen(
                                         viewModel = homeViewModel,
-                                        onMenuClick = { /* TODO: mở menu 3 gạch (Drawer) */ },
+                                        onMenuClick = { showDrawer = true },
                                         onLocationClick = { showPicker = true },
                                     )
 
@@ -75,6 +78,21 @@ class MainActivity : ComponentActivity() {
                                             },
                                         )
                                     }
+
+                                    // Menu 3 gạch trượt từ trái qua phải
+                                    AppDrawer(
+                                        isOpen = showDrawer,
+                                        onClose = { showDrawer = false },
+                                        onSignOut = {
+                                            if (homeViewModel.state.value.status == ConnectionStatus.Connected) {
+                                                homeViewModel.onPowerClick()
+                                            }
+                                            keyStore.clear()
+                                            isActivated = false
+                                            showDrawer = false
+                                        },
+                                        userKey = keyStore.get(),
+                                    )
                                 }
                             }
                         }
