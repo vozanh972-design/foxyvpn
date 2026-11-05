@@ -21,17 +21,15 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: '17'
-          cache: 'gradle'
 
-      - name: Setup Gradle Wrapper
-        run: |
-          if [ ! -f "gradlew" ]; then
-            gradle wrapper --gradle-version 8.7
-          fi
-          chmod +x gradlew
+      - name: Setup Gradle with Advanced Caching
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+          cache-read-only: false
 
-      - name: Build Debug APK
-        run: ./gradlew assembleDebug --stacktrace
+      - name: Build Debug APK (Parallel & Cached)
+        run: ./gradlew assembleDebug --no-daemon --parallel --build-cache
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
@@ -50,7 +48,7 @@ jobs:
             ### 🦊 Foxy VPN - Bản cài đặt thử nghiệm (Debug APK)
             - **Phiên bản:** 1.0.0
             - **Công nghệ:** Kotlin + Jetpack Compose (Material3)
-            - **Giao diện:** Màn hình chính quả địa cầu Canvas, nút kết nối nguồn, đo tốc độ Up/Down.
+            - **Tính năng mới:** Giao diện Splash chuẩn SVG, tự động co giãn kích thước theo từng dòng máy (Responsive Density).
             
             👉 Tải trực tiếp file `app-debug.apk` bên dưới về điện thoại Android để cài đặt.
           draft: false

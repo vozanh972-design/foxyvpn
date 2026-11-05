@@ -20,6 +20,7 @@ import com.example.foxy.ui.home.ServerPickerDialog
 import com.example.foxy.ui.key.KeyScreen
 import com.example.foxy.ui.splash.SplashScreen
 import com.example.foxy.ui.theme.FoxyTheme
+import com.example.foxy.ui.theme.ResponsiveContainer
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -31,47 +32,49 @@ class MainActivity : ComponentActivity() {
         )
         setContent {
             FoxyTheme {
-                val context = LocalContext.current
-                val keyStore = remember { KeyStore(context) }
-                var showSplash by remember { mutableStateOf(true) }
-                var isActivated by remember { mutableStateOf(keyStore.hasKey()) }
+                ResponsiveContainer {
+                    val context = LocalContext.current
+                    val keyStore = remember { KeyStore(context) }
+                    var showSplash by remember { mutableStateOf(true) }
+                    var isActivated by remember { mutableStateOf(keyStore.hasKey()) }
 
-                Crossfade(targetState = showSplash, label = "SplashTransition") { inSplash ->
-                    if (inSplash) {
-                        SplashScreen(
-                            onFinish = {
-                                showSplash = false
-                            },
-                        )
-                    } else {
-                        Crossfade(targetState = isActivated, label = "ScreenTransition") { activated ->
-                            if (!activated) {
-                                KeyScreen(
-                                    onActivated = {
-                                        isActivated = true
-                                    },
-                                    onBuyClick = {
-                                        // Mở trang web mua gói hoặc thông báo
-                                    },
-                                )
-                            } else {
-                                val homeViewModel: HomeViewModel = viewModel()
-                                var showPicker by remember { mutableStateOf(false) }
-
-                                HomeScreen(
-                                    viewModel = homeViewModel,
-                                    onMenuClick = { /* TODO: mở menu 3 gạch (Drawer) */ },
-                                    onLocationClick = { showPicker = true },
-                                )
-
-                                if (showPicker) {
-                                    ServerPickerDialog(
-                                        onDismiss = { showPicker = false },
-                                        onPick = {
-                                            homeViewModel.selectServer(it)
-                                            showPicker = false
+                    Crossfade(targetState = showSplash, label = "SplashTransition") { inSplash ->
+                        if (inSplash) {
+                            SplashScreen(
+                                onFinish = {
+                                    showSplash = false
+                                },
+                            )
+                        } else {
+                            Crossfade(targetState = isActivated, label = "ScreenTransition") { activated ->
+                                if (!activated) {
+                                    KeyScreen(
+                                        onActivated = {
+                                            isActivated = true
+                                        },
+                                        onBuyClick = {
+                                            // Mở trang web mua gói hoặc thông báo
                                         },
                                     )
+                                } else {
+                                    val homeViewModel: HomeViewModel = viewModel()
+                                    var showPicker by remember { mutableStateOf(false) }
+
+                                    HomeScreen(
+                                        viewModel = homeViewModel,
+                                        onMenuClick = { /* TODO: mở menu 3 gạch (Drawer) */ },
+                                        onLocationClick = { showPicker = true },
+                                    )
+
+                                    if (showPicker) {
+                                        ServerPickerDialog(
+                                            onDismiss = { showPicker = false },
+                                            onPick = {
+                                                homeViewModel.selectServer(it)
+                                                showPicker = false
+                                            },
+                                        )
+                                    }
                                 }
                             }
                         }
