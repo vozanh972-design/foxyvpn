@@ -34,6 +34,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -70,12 +71,18 @@ fun AppDrawer(
 ) {
     var activePanel by remember { mutableStateOf(DrawerPanel.None) }
 
+    LaunchedEffect(isOpen) {
+        if (!isOpen) {
+            activePanel = DrawerPanel.None
+        }
+    }
+
+    // 1. Scrim (Lớp làm tối nền: rgba(10,4,40,.5))
     AnimatedVisibility(
         visible = isOpen,
-        enter = fadeIn(tween(300)),
-        exit = fadeOut(tween(300)),
+        enter = fadeIn(tween(250)),
+        exit = fadeOut(tween(250)),
     ) {
-        // Scrim (Lớp làm tối nền: rgba(10,4,40,.5))
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -94,11 +101,11 @@ fun AppDrawer(
         )
     }
 
-    // Drawer Menu trượt từ trái qua phải (width: 78%)
+    // 2. Drawer Menu chính trượt từ trái qua phải (width: 78%)
     AnimatedVisibility(
-        visible = isOpen,
-        enter = slideInHorizontally(initialOffsetX = { -it }, animationSpec = tween(420)),
-        exit = slideOutHorizontally(targetOffsetX = { -it }, animationSpec = tween(420)),
+        visible = isOpen && activePanel == DrawerPanel.None,
+        enter = slideInHorizontally(initialOffsetX = { -it }, animationSpec = tween(380)),
+        exit = slideOutHorizontally(targetOffsetX = { -it }, animationSpec = tween(380)),
     ) {
         Box(modifier = modifier.fillMaxSize()) {
             Surface(
@@ -114,14 +121,13 @@ fun AppDrawer(
                         .fillMaxSize()
                         .statusBarsPadding()
                         .navigationBarsPadding()
-                        .verticalScroll(rememberScrollState())
                         .padding(start = 18.dp, end = 18.dp, top = 26.dp, bottom = 26.dp),
                 ) {
                     // Header: Logo SVG (.dmk) + Foxy (.dh b)
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        modifier = Modifier.padding(start = 6.dp, bottom = 26.dp),
+                        modifier = Modifier.padding(start = 6.dp, bottom = 24.dp),
                     ) {
                         Image(
                             painter = painterResource(id = R.drawable.ic_foxy_logo),
@@ -138,52 +144,52 @@ fun AppDrawer(
                         )
                     }
 
-                    // Danh sách mục menu
-                    DrawerItem(
-                        icon = { SettingsIcon(color = it) },
-                        text = "Cài đặt",
-                        onClick = { activePanel = DrawerPanel.Settings },
-                    )
-                    DrawerItem(
-                        icon = { AccountIcon(color = it) },
-                        text = "Gói của tôi",
-                        onClick = { activePanel = DrawerPanel.Account },
-                    )
+                    // Danh sách mục menu (cuộn mượt mà và chiếm phần trên)
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .verticalScroll(rememberScrollState()),
+                    ) {
+                        DrawerItem(
+                            icon = { SettingsIcon(color = it) },
+                            text = "Cài đặt",
+                            onClick = { activePanel = DrawerPanel.Settings },
+                        )
+                        DrawerItem(
+                            icon = { AccountIcon(color = it) },
+                            text = "Gói của tôi",
+                            onClick = { activePanel = DrawerPanel.Account },
+                        )
 
-                    Spacer(Modifier.height(16.dp))
+                        Spacer(Modifier.height(16.dp))
 
-                    DrawerItem(
-                        icon = { HelpIcon(color = it) },
-                        text = "Trợ giúp & hỗ trợ",
-                        onClick = {},
-                    )
-                    DrawerItem(
-                        icon = { PrivacyIcon(color = it) },
-                        text = "Quyền riêng tư",
-                        onClick = {},
-                    )
+                        DrawerItem(
+                            icon = { HelpIcon(color = it) },
+                            text = "Trợ giúp & hỗ trợ",
+                            onClick = {},
+                        )
+                        DrawerItem(
+                            icon = { PrivacyIcon(color = it) },
+                            text = "Quyền riêng tư",
+                            onClick = {},
+                        )
 
-                    Spacer(Modifier.height(16.dp))
+                        Spacer(Modifier.height(16.dp))
 
-                    DrawerItem(
-                        icon = { DevicesIcon(color = it) },
-                        text = "Bảo vệ mọi thiết bị",
-                        onClick = {},
-                    )
-                    DrawerItem(
-                        icon = { GiftIcon(color = it) },
-                        text = "Tặng 30 ngày miễn phí",
-                        onClick = {},
-                    )
-                    DrawerItem(
-                        icon = { FeedbackIcon(color = it) },
-                        text = "Gửi phản hồi",
-                        onClick = {},
-                    )
+                        DrawerItem(
+                            icon = { DevicesIcon(color = it) },
+                            text = "Bảo vệ mọi thiết bị",
+                            onClick = {},
+                        )
+                        // ĐÃ BỎ MỤC "Tặng 30 ngày miễn phí" THEO YÊU CẦU
+                        DrawerItem(
+                            icon = { FeedbackIcon(color = it) },
+                            text = "Gửi phản hồi",
+                            onClick = {},
+                        )
+                    }
 
-                    Spacer(Modifier.height(24.dp))
-
-                    // Đăng xuất (.it.out: color: #d6455d)
+                    // ĐĂNG XUẤT ĐƯỢC ĐẨY SÁT ĐÁY MÀN HÌNH (.it.out { margin-top: auto; color: #d6455d; })
                     DrawerItem(
                         icon = { LogoutIcon(color = Color(0xFFD6455D)) },
                         text = "Đăng xuất",
@@ -195,57 +201,60 @@ fun AppDrawer(
                     )
                 }
             }
+        }
+    }
 
-            // Sub-panel trượt từ trái sang phải: Cài đặt / Gói của tôi
-            AnimatedVisibility(
-                visible = activePanel != DrawerPanel.None,
-                enter = slideInHorizontally(initialOffsetX = { -it }, animationSpec = tween(420)),
-                exit = slideOutHorizontally(targetOffsetX = { -it }, animationSpec = tween(420)),
+    // 3. Panel trượt toàn màn hình (.pnl) khi bấm Cài đặt / Gói của tôi
+    AnimatedVisibility(
+        visible = isOpen && activePanel != DrawerPanel.None,
+        enter = slideInHorizontally(initialOffsetX = { -it }, animationSpec = tween(380)),
+        exit = slideOutHorizontally(targetOffsetX = { -it }, animationSpec = tween(380)),
+    ) {
+        Surface(
+            modifier = modifier
+                .fillMaxSize()
+                .shadow(20.dp),
+            color = FoxyColors.Sheet,
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .statusBarsPadding()
+                    .navigationBarsPadding()
+                    .padding(22.dp)
+                    .verticalScroll(rememberScrollState()),
             ) {
-                Surface(
-                    modifier = Modifier.fillMaxSize(),
-                    color = FoxyColors.Sheet,
+                // Header Panel: Tiêu đề + Nút đóng X
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 20.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Column(
+                    Text(
+                        text = if (activePanel == DrawerPanel.Settings) "Cài đặt" else "Gói của tôi",
+                        fontSize = 24.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = FoxyColors.Ink,
+                        letterSpacing = (-0.8).sp,
+                    )
+                    Box(
                         modifier = Modifier
-                            .fillMaxSize()
-                            .statusBarsPadding()
-                            .navigationBarsPadding()
-                            .padding(22.dp)
-                            .verticalScroll(rememberScrollState()),
+                            .size(38.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFFECE6FF))
+                            .clickable { activePanel = DrawerPanel.None },
+                        contentAlignment = Alignment.Center,
                     ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(bottom = 20.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Text(
-                                text = if (activePanel == DrawerPanel.Settings) "Cài đặt" else "Gói của tôi",
-                                fontSize = 24.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = FoxyColors.Ink,
-                                letterSpacing = (-0.8).sp,
-                            )
-                            Box(
-                                modifier = Modifier
-                                    .size(38.dp)
-                                    .clip(CircleShape)
-                                    .background(Color(0xFFECE6FF))
-                                    .clickable { activePanel = DrawerPanel.None },
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                Text("✕", color = FoxyColors.Violet, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                            }
-                        }
-
-                        if (activePanel == DrawerPanel.Settings) {
-                            SettingsContent()
-                        } else if (activePanel == DrawerPanel.Account) {
-                            AccountContent(userKey = userKey)
-                        }
+                        Text("✕", color = FoxyColors.Violet, fontSize = 16.sp, fontWeight = FontWeight.Bold)
                     }
+                }
+
+                if (activePanel == DrawerPanel.Settings) {
+                    SettingsContent()
+                } else if (activePanel == DrawerPanel.Account) {
+                    AccountContent(userKey = userKey)
                 }
             }
         }
@@ -352,7 +361,7 @@ private fun SettingRow(title: String, subtitle: String, checked: Boolean, onChec
 @Composable
 private fun AccountContent(userKey: String?) {
     val displayKey = remember(userKey) {
-        val k = userKey ?: "ABCD1234EFGH5678"
+        val k = userKey?.ifBlank { null } ?: "ABCD1234EFGH5678"
         if (k.length >= 16) "${k.take(4)}-••••-••••-${k.takeLast(4)}" else k
     }
 
@@ -374,6 +383,7 @@ private fun AccountContent(userKey: String?) {
         }
         Column {
             Text("Gói Premium", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = FoxyColors.Ink)
+            Spacer(Modifier.height(2.dp))
             Text("Đang hoạt động", fontSize = 12.sp, color = FoxyColors.Muted)
         }
     }
@@ -390,9 +400,9 @@ private fun AccountContent(userKey: String?) {
     ) {
         Column(Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
             Text("Hết hạn", fontSize = 12.sp, color = FoxyColors.Muted)
-            Spacer(Modifier.height(2.dp))
+            Spacer(Modifier.height(4.dp))
             Text("03/12/2026 · còn 28 ngày", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = FoxyColors.Ink)
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(10.dp))
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
