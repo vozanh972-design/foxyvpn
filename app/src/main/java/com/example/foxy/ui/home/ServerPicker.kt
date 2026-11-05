@@ -47,6 +47,9 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.Image
+import androidx.compose.ui.res.painterResource
+import com.example.foxy.R
 import com.example.foxy.data.Server
 import com.example.foxy.data.ServerRepository
 import com.example.foxy.ui.theme.FoxyColors
@@ -196,84 +199,103 @@ fun ServerPickerSheet(
                         contentPadding = PaddingValues(bottom = 20.dp),
                         verticalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
-                        // Mục "Ngẫu nhiên" hiển thị khi không tìm kiếm (f ? "" : ...)
+                        // ✅ Row "Free Fire" — dùng ảnh thay emoji quả cầu
                         if (cleanQuery.isEmpty()) {
                             item {
-                                // State riêng cho chip Auto trong row Ngẫu nhiên
                                 var autoLaunchTapped by remember { mutableStateOf(false) }
-                                ServerRowWithLaunch(
-                                    flag = "🌐",
-                                    title = "Ngẫu nhiên",
-                                    subtitle = "Tự động chọn máy chủ xa",
-                                    trailingText = if (autoLaunchTapped) "..." else "Auto",
-                                    trailingColor = if (autoLaunchTapped) Color(0xFFFF4E00) else FoxyColors.Violet2,
-                                    trailingBg = if (autoLaunchTapped) Color(0xFFFF4E00) else FoxyColors.PingChip,
-                                    trailingTextColor = if (autoLaunchTapped) Color.White else FoxyColors.Violet2,
-                                    isSelected = isAuto,
-                                    onClick = {
-                                        onPick(null)
-                                        Toast.makeText(context, "Đã chọn: Ngẫu nhiên", Toast.LENGTH_SHORT).show()
-                                    },
-                                    onTrailingClick = {
-                                        if (!autoLaunchTapped) {
-                                            autoLaunchTapped = true
-                                            try {
-                                                val intent = Intent().apply {
-                                                    component = ComponentName(
-                                                        "com.dts.freefireth",
-                                                        "com.dts.freefireth.FFMainActivity"
-                                                    )
-                                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                                }
-                                                context.startActivity(intent)
-                                            } catch (e: Exception) {
-                                                try {
-                                                    val launchIntent = context.packageManager
-                                                        .getLaunchIntentForPackage("com.dts.freefireth")
-                                                    if (launchIntent != null) {
-                                                        context.startActivity(launchIntent)
-                                                    }
-                                                } catch (_: Exception) {}
-                                            }
-                                            android.os.Handler(android.os.Looper.getMainLooper())
-                                                .postDelayed({ autoLaunchTapped = false }, 2000)
+
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(18.dp))
+                                        .background(if (isAuto) Color(0xFFECE6FF) else Color.Transparent)
+                                        .clickable {
+                                            onPick(null)
+                                            Toast.makeText(context, "Đã chọn: Free Fire", Toast.LENGTH_SHORT).show()
                                         }
-                                    },
-                                )
+                                        .padding(horizontal = 10.dp, vertical = 12.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(14.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    // ✅ Ảnh Free Fire MAX thay quả cầu xanh
+                                    Image(
+                                        painter = painterResource(id = R.drawable.ic_freefire),
+                                        contentDescription = "Free Fire",
+                                        modifier = Modifier
+                                            .size(38.dp)
+                                            .clip(RoundedCornerShape(10.dp)),
+                                    )
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = "Free Fire",   // ✅ "Ngẫu nhiên" → "Free Fire"
+                                            fontSize = 15.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = FoxyColors.Ink,
+                                        )
+                                        Spacer(Modifier.height(1.dp))
+                                        Text(
+                                            text = "Tự động chọn máy chủ xa",
+                                            fontSize = 12.sp,
+                                            color = FoxyColors.Muted,
+                                        )
+                                    }
+                                    // Chip "Auto" / "..." — bấm mở game
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(50))
+                                            .background(
+                                                if (autoLaunchTapped) Color(0xFFFF4E00)
+                                                else FoxyColors.PingChip
+                                            )
+                                            .clickable {
+                                                if (!autoLaunchTapped) {
+                                                    autoLaunchTapped = true
+                                                    try {
+                                                        val intent = Intent().apply {
+                                                            component = ComponentName(
+                                                                "com.dts.freefireth",
+                                                                "com.dts.freefireth.FFMainActivity"
+                                                            )
+                                                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                                        }
+                                                        context.startActivity(intent)
+                                                    } catch (e: Exception) {
+                                                        try {
+                                                            val fb = context.packageManager
+                                                                .getLaunchIntentForPackage("com.dts.freefireth")
+                                                            if (fb != null) {
+                                                                fb.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                                                context.startActivity(fb)
+                                                            }
+                                                        } catch (_: Exception) {}
+                                                    }
+                                                    android.os.Handler(android.os.Looper.getMainLooper())
+                                                        .postDelayed({ autoLaunchTapped = false }, 2000)
+                                                }
+                                            }
+                                            .padding(horizontal = 10.dp, vertical = 6.dp),
+                                        contentAlignment = Alignment.Center,
+                                    ) {
+                                        Text(
+                                            text = if (autoLaunchTapped) "..." else "Auto",
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = if (autoLaunchTapped) Color.White else FoxyColors.Violet2,
+                                        )
+                                    }
+                                }
                             }
                         }
 
-
-                        // Danh sách máy chủ
-                        items(filteredServers, key = { it.country + it.city }) { server ->
-                            val isSelected = !isAuto && currentServer?.country == server.country && currentServer?.city == server.city
-
-                            // Phân màu ping ms chuẩn HTML CSS: .g (<60) | .o (<150) | .r (>=150)
-                            val pingColor = when {
-                                server.pingMs < 60 -> Color(0xFF14A85A)   // .g
-                                server.pingMs < 150 -> Color(0xFFE08A00)  // .o
-                                else -> Color(0xFFD6455D)                 // .r
-                            }
-
-                            ServerRow(
-                                flag = server.flag,
-                                title = server.country,
-                                subtitle = server.city,
-                                trailingText = "${server.pingMs} ms",
-                                trailingColor = pingColor,
-                                isSelected = isSelected,
-                                onClick = {
-                                    onPick(server)
-                                    Toast.makeText(context, "Đã chọn ${server.country}", Toast.LENGTH_SHORT).show()
-                                },
-                            )
-                        }
+                        // ✅ Danh sách các nước ĐÃ ẨN — chỉ hiện "Free Fire"
+                        // items(filteredServers) { ... } — đã xóa theo yêu cầu
                     }
                 }
             }
         }
     }
 }
+
 
 /**
  * Một hàng máy chủ .srv:

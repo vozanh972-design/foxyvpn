@@ -25,9 +25,12 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.Image
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.res.painterResource
+import com.example.foxy.R
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -236,14 +239,15 @@ private fun BottomPanel(
 
 @Composable
 private fun LocationCard(state: HomeUiState, onClick: () -> Unit) {
-    // Chưa kết nối + chế độ tự động => hiện "Ngẫu nhiên"
+    // Luôn hiển thị "Free Fire" — không dùng server ngẫu nhiên khác
+    // shown = null nghĩa là đang ở chế độ Free Fire (auto)
     val shown: Server? = if (state.status == ConnectionStatus.Idle) {
         if (state.isAuto) null else state.selected
     } else {
         state.current
     }
 
-    // State cho nút Auto: false = "Auto", true = "..." đang mở game
+    // State chip: "Auto" → "..." → mở game
     var autoTapped by remember { mutableStateOf(false) }
     val context = LocalContext.current
 
@@ -260,24 +264,39 @@ private fun LocationCard(state: HomeUiState, onClick: () -> Unit) {
             horizontalArrangement = Arrangement.spacedBy(14.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(shown?.flag ?: "🌐", fontSize = 30.sp)
+            // Icon: ảnh Free Fire khi auto, cờ quốc gia khi đã chọn server cụ thể
+            if (shown == null) {
+                // ✅ Ảnh Free Fire MAX thay thế quả cầu xanh
+                Image(
+                    painter = painterResource(id = R.drawable.ic_freefire),
+                    contentDescription = "Free Fire",
+                    modifier = Modifier
+                        .size(42.dp)
+                        .clip(RoundedCornerShape(10.dp)),
+                )
+            } else {
+                Text(shown.flag, fontSize = 30.sp)
+            }
+
             Column(Modifier.weight(1f)) {
                 Text(
-                    shown?.country ?: "Ngẫu nhiên",
+                    // ✅ "Ngẫu nhiên" → "Free Fire"
+                    text = shown?.country ?: "Free Fire",
                     color = FoxyColors.Ink,
                     fontSize = 16.sp,
                     fontWeight = FontWeight.SemiBold,
                 )
                 Text(
-                    shown?.city ?: "Tự động chọn máy chủ",
+                    text = shown?.city ?: "Tự động chọn máy chủ",
                     color = FoxyColors.Muted,
                     fontSize = 12.sp,
                 )
             }
-            // Chip "Auto" / "..." — bấm vào sẽ launch Free Fire
+
+            // ✅ Chip: ping ms → "...", Auto → "..." khi bấm mở game
             Text(
                 text = if (shown != null) {
-                    "${shown.pingMs} ms"
+                    "..."   // ping ms đổi thành "..." theo yêu cầu
                 } else {
                     if (autoTapped) "..." else "Auto"
                 },
@@ -289,7 +308,7 @@ private fun LocationCard(state: HomeUiState, onClick: () -> Unit) {
                     )
                     .padding(horizontal = 10.dp, vertical = 6.dp)
                     .clickable(enabled = shown == null) {
-                        // Khi bấm vào "Auto": đổi thành "...", rồi mở Free Fire
+                        // Bấm "Auto" → "..." → launch Free Fire
                         if (!autoTapped) {
                             autoTapped = true
                             try {
@@ -302,16 +321,15 @@ private fun LocationCard(state: HomeUiState, onClick: () -> Unit) {
                                 }
                                 context.startActivity(intent)
                             } catch (e: Exception) {
-                                // Game chưa cài — thử mở qua package launcher
                                 try {
-                                    val launchIntent = context.packageManager
+                                    val fallback = context.packageManager
                                         .getLaunchIntentForPackage("com.dts.freefireth")
-                                    if (launchIntent != null) {
-                                        context.startActivity(launchIntent)
+                                    if (fallback != null) {
+                                        fallback.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                        context.startActivity(fallback)
                                     }
                                 } catch (_: Exception) {}
                             }
-                            // Reset lại sau 2 giây
                             android.os.Handler(android.os.Looper.getMainLooper())
                                 .postDelayed({ autoTapped = false }, 2000)
                         }
