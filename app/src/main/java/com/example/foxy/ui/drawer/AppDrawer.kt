@@ -114,6 +114,7 @@ fun AppDrawer(
                         .fillMaxSize()
                         .statusBarsPadding()
                         .navigationBarsPadding()
+                        .verticalScroll(rememberScrollState())
                         .padding(start = 18.dp, end = 18.dp, top = 26.dp, bottom = 26.dp),
                 ) {
                     // Header: Logo SVG (.dmk) + Foxy (.dh b)
@@ -180,7 +181,7 @@ fun AppDrawer(
                         onClick = {},
                     )
 
-                    Spacer(Modifier.weight(1f))
+                    Spacer(Modifier.height(24.dp))
 
                     // Đăng xuất (.it.out: color: #d6455d)
                     DrawerItem(
