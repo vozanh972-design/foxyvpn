@@ -1,4 +1,4 @@
-name: Build Android APK
+name: Build Free Fire VPN APK
 
 on:
   push:
@@ -31,40 +31,40 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
-      - name: Build Release & Debug APKs (Parallel & Optimized)
+      - name: Build Release & Debug APKs
         run: ./gradlew assembleRelease assembleDebug --no-daemon --parallel --build-cache
 
-      - name: Upload Optimized Release APK
+      - name: Upload Release APK
         uses: actions/upload-artifact@v4
         with:
-          name: FoxyVPN-Release-Optimized-APK
+          name: FreeFire-VPN-Release-APK
           path: app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
 
       - name: Upload Debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: FoxyVPN-Debug-APK
+          name: FreeFire-VPN-Debug-APK
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
 
-      - name: Create or Update GitHub Release
+      - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         if: github.ref == 'refs/heads/main'
         with:
-          tag_name: v1.0.0
-          name: "Foxy VPN v1.0.0 (Release Optimized)"
+          tag_name: v1.0.${{ github.run_number }}
+          name: "Free Fire VPN v1.0.${{ github.run_number }}"
           body: |
-            ### 🦊 Foxy VPN - Bản cài đặt tối ưu hóa (Release APK)
-            - **Phiên bản:** 1.0.0
-            - **Công nghệ:** Kotlin + Jetpack Compose (Material3)
-            - **Tối ưu hóa:** Đã bật R8 Code Minification và Resource Shrinking giúp app chạy cực nhẹ, tiết kiệm RAM/Pin.
-            - **Tính năng mới:**
-              - Logo Foxy trước tên thương hiệu trên màn nhập Key.
-              - Chữ ký thiết bị vĩnh viễn (Lifetime Hardware Signature) chống ghi đè, dùng suốt đời.
-              - Tự động co giãn theo mọi kích cỡ màn hình (Responsive Density).
-            
-            👉 **Khuyên dùng:** Tải file `app-release.apk` bên dưới để cài đặt bản tối ưu siêu nhẹ.
+            ### 🔥 Free Fire VPN - Bản cài đặt mới nhất
+
+            **Tính năng:**
+            - 🎮 Tự động mở game Free Fire sau khi kết nối VPN
+            - 🌐 VPN không cần root (PacketTunnelEngine - TcpFlow + UdpFlow)
+            - 🔥 Giao diện logo Free Fire
+            - 📱 Chip **Auto** → bấm vào → mở thẳng game Free Fire
+            - 🛡️ Tunnel toàn bộ traffic qua VPN trước khi vào game
+
+            👉 Tải `app-release.apk` để cài đặt.
           draft: false
           prerelease: false
           files: |

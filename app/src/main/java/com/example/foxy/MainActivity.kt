@@ -1,11 +1,15 @@
 package com.example.foxy
 
+import android.app.Activity
+import android.content.Intent
 import android.graphics.Color as AndroidColor
+import android.net.VpnService
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.Crossfade
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -26,74 +30,93 @@ import com.example.foxy.ui.theme.FoxyTheme
 import com.example.foxy.ui.theme.ResponsiveContainer
 
 class MainActivity : ComponentActivity() {
+
+    // Launcher xử lý kết quả xin quyền VPN từ hệ thống Android
+    // Giống cách Pigboy dùng REQ_VPN để xin quyền VpnService
+    private lateinit var homeViewModel: HomeViewModel
+
+    private val vpnPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            // User đồng ý → bật VPN + mở game
+            homeViewModel.onVpnPermissionGranted()
+        } else {
+            // User từ chối
+            homeViewModel.onVpnPermissionDenied()
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge(
-            // Thanh trạng thái nằm trên nền tím => icon sáng; thanh điều hướng nằm trên nền trắng => icon tối
-            statusBarStyle = SystemBarStyle.dark(AndroidColor.TRANSPARENT),
+            statusBarStyle     = SystemBarStyle.dark(AndroidColor.TRANSPARENT),
             navigationBarStyle = SystemBarStyle.light(AndroidColor.TRANSPARENT, AndroidColor.TRANSPARENT),
         )
         setContent {
             FoxyTheme {
                 ResponsiveContainer {
-                    val context = LocalContext.current
-                    val keyStore = remember { KeyStore(context) }
+                    val context    = LocalContext.current
+                    val keyStore   = remember { KeyStore(context) }
                     var showSplash by remember { mutableStateOf(true) }
                     var isActivated by remember { mutableStateOf(keyStore.hasKey()) }
 
                     Crossfade(targetState = showSplash, label = "SplashTransition") { inSplash ->
                         if (inSplash) {
-                            SplashScreen(
-                                onFinish = {
-                                    showSplash = false
-                                },
-                            )
+                            SplashScreen(onFinish = { showSplash = false })
                         } else {
                             Crossfade(targetState = isActivated, label = "ScreenTransition") { activated ->
                                 if (!activated) {
                                     KeyScreen(
-                                        onActivated = {
-                                            isActivated = true
-                                        },
-                                        onBuyClick = {
-                                            // Mở trang web mua gói hoặc thông báo
-                                        },
+                                        onActivated = { isActivated = true },
+                                        onBuyClick  = {},
                                     )
                                 } else {
-                                    val homeViewModel: HomeViewModel = viewModel()
-                                    val homeState by homeViewModel.state.collectAsState()
+                                    // Khởi tạo ViewModel dùng chung cho cả Activity
+                                    val vm: HomeViewModel = viewModel()
+                                    homeViewModel = vm  // giữ ref để vpnPermissionLauncher truy cập
+
+                                    val homeState by vm.state.collectAsState()
                                     var showPicker by remember { mutableStateOf(false) }
                                     var showDrawer by remember { mutableStateOf(false) }
 
+                                    // Theo dõi flag needsVpnPermission — khi true thì xin quyền
+                                    if (homeState.needsVpnPermission) {
+                                        val permIntent = VpnService.prepare(context)
+                                        if (permIntent != null) {
+                                            vpnPermissionLauncher.launch(permIntent)
+                                        } else {
+                                            vm.onVpnPermissionGranted()
+                                        }
+                                    }
+
                                     HomeScreen(
-                                        viewModel = homeViewModel,
-                                        onMenuClick = { showDrawer = true },
+                                        viewModel      = vm,
+                                        onMenuClick    = { showDrawer = true },
                                         onLocationClick = { showPicker = true },
                                     )
 
-                                    // Màn hình chọn vị trí (.pick) trượt từ dưới lên chuẩn 100% HTML
                                     ServerPickerSheet(
-                                        isOpen = showPicker,
+                                        isOpen        = showPicker,
                                         currentServer = if (homeState.isAuto) null else homeState.selected,
-                                        isAuto = homeState.isAuto,
-                                        onClose = { showPicker = false },
-                                        onPick = {
-                                            homeViewModel.selectServer(it)
+                                        isAuto        = homeState.isAuto,
+                                        onClose       = { showPicker = false },
+                                        onPick        = {
+                                            vm.selectServer(it)
                                             showPicker = false
                                         },
                                     )
 
-                                    // Menu 3 gạch trượt từ trái qua phải
                                     AppDrawer(
-                                        isOpen = showDrawer,
-                                        onClose = { showDrawer = false },
+                                        isOpen   = showDrawer,
+                                        onClose  = { showDrawer = false },
                                         onSignOut = {
-                                            if (homeViewModel.state.value.status == ConnectionStatus.Connected) {
-                                                homeViewModel.onPowerClick()
+                                            if (homeState.status == ConnectionStatus.Connected) {
+                                                vm.onPowerClick()
                                             }
                                             keyStore.clear()
                                             isActivated = false
-                                            showDrawer = false
+                                            showDrawer  = false
                                         },
                                         userKey = keyStore.get(),
                                     )

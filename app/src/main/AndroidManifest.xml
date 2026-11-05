@@ -1,8 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <!-- Quyền mạng cơ bản -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- Quyền VPN — bắt buộc để tạo TUN interface như Pigboy -->
+    <uses-permission android:name="android.permission.BIND_VPN_SERVICE" />
+    <!-- Foreground service để VPN chạy ổn định trên Android 9+ -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <!-- Vibrate nhỏ khi kết nối thành công (optional) -->
+    <uses-permission android:name="android.permission.VIBRATE" />
 
     <application
         android:allowBackup="true"
@@ -11,6 +19,8 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.FoxyVPN">
+
+        <!-- MainActivity chính -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -20,6 +30,23 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!--
+            FreefireVpnService — VPN Service thực.
+            Khai báo permission android.permission.BIND_VPN_SERVICE bắt buộc
+            để Android cấp cho app tạo TUN interface (giống Pigboy PacketTunnelEngine).
+        -->
+        <service
+            android:name=".vpn.FreefireVpnService"
+            android:exported="false"
+            android:permission="android.permission.BIND_VPN_SERVICE"
+            android:foregroundServiceType="specialUse">
+            <!-- Filter để VpnService.prepare() nhận diện -->
+            <intent-filter>
+                <action android:name="android.net.VpnService" />
+            </intent-filter>
+        </service>
+
     </application>
 
 </manifest>

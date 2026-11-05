@@ -1,40 +1,67 @@
-<?xml version="1.0" encoding="utf-8"?>
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <group
-        android:scaleX="0.62"
-        android:scaleY="0.62"
-        android:translateX="21.76"
-        android:translateY="21.76">
-        <!-- 2 tai cáo (Fill color) -->
-        <path
-            android:fillColor="#FFD23F"
-            android:fillType="evenOdd"
-            android:pathData="M16,1 L8.5,49.9 A62,62 0,0 1,36 35.6 Z M18.8,14 L16,37.1 A68,68 0,0 1,29 31.3 Z M84,1 L91.5,49.9 A62,62 0,0 0,64 35.6 Z M81.2,14 L84,37.1 A68,68 0,0 0,71 31.3 Z" />
 
-        <!-- 3 cung sóng wifi (Stroke width 9) -->
-        <path
-            android:strokeColor="#FFD23F"
-            android:strokeWidth="9"
-            android:strokeLineCap="round"
-            android:pathData="M13.9,58.6 A52,52 0,0 1,86.1 58.6" />
-        <path
-            android:strokeColor="#FFD23F"
-            android:strokeWidth="9"
-            android:strokeLineCap="round"
-            android:pathData="M25,70.1 A36,36 0,0 1,75 70.1" />
-        <path
-            android:strokeColor="#FFD23F"
-            android:strokeWidth="9"
-            android:strokeLineCap="round"
-            android:pathData="M36.1,81.6 A20,20 0,0 1,63.9 81.6" />
+    <!-- Nền đen -->
+    <path
+        android:fillColor="#000000"
+        android:pathData="M0,0h108v108H0z"/>
 
-        <!-- Chấm tròn đáy (Circle cx=50 cy=93 r=5.5) -->
-        <path
-            android:fillColor="#FFD23F"
-            android:pathData="M50,87.5 A5.5,5.5 0,1 1,49.99,87.5 Z" />
-    </group>
+    <!-- Lửa chính - màu cam đỏ Free Fire -->
+    <path
+        android:fillColor="#FF4E00"
+        android:pathData="M54,88
+            C54,88 30,72 30,52
+            C30,38 40,30 48,32
+            C44,38 46,44 50,46
+            C48,36 54,26 62,22
+            C60,32 64,38 68,40
+            C72,34 72,28 70,22
+            C80,30 78,46 74,52
+            C76,48 80,46 82,48
+            C84,56 78,68 70,74
+            C74,66 74,58 70,54
+            C68,62 62,70 54,88Z"/>
+
+    <!-- Lửa trong - màu vàng cam -->
+    <path
+        android:fillColor="#FFB300"
+        android:pathData="M54,80
+            C54,80 36,66 38,50
+            C40,40 46,36 50,38
+            C47,43 48,48 52,50
+            C50,42 54,34 60,30
+            C59,38 62,43 65,45
+            C68,40 68,34 66,29
+            C74,36 72,48 68,53
+            C70,50 73,48 75,50
+            C76,56 72,66 66,71
+            C69,65 69,58 66,54
+            C63,62 58,70 54,80Z"/>
+
+    <!-- Lõi lửa vàng sáng -->
+    <path
+        android:fillColor="#FFE566"
+        android:pathData="M54,70
+            C54,70 44,60 45,50
+            C46,44 50,41 52,42
+            C51,46 52,49 54,51
+            C53,46 56,41 59,38
+            C58,44 60,47 62,49
+            C64,45 64,41 62,37
+            C67,42 65,50 62,54
+            C63,52 65,51 66,52
+            C67,56 64,63 60,67
+            C61,63 61,58 59,55
+            C57,61 55,66 54,70Z"/>
+
+    <!-- Text "FREE FIRE" gợi ý - chữ FF nhỏ ở dưới -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M24,94 L24,96 L30,96 L30,94Z
+                          M24,98 L24,100 L28,100 L28,98Z
+                          M24,102 L24,104 L30,104 L30,102Z"/>
+
 </vector>

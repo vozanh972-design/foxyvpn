@@ -30,6 +30,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -41,6 +44,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
@@ -55,6 +59,8 @@ import com.example.foxy.data.ServerRepository
 import com.example.foxy.ui.theme.FoxyColors
 import com.example.foxy.ui.theme.FoxyTheme
 import java.util.Locale
+import android.content.Intent
+import android.content.ComponentName
 
 /** Màn chính, tự lấy trạng thái từ ViewModel. */
 @Composable
@@ -237,6 +243,10 @@ private fun LocationCard(state: HomeUiState, onClick: () -> Unit) {
         state.current
     }
 
+    // State cho nút Auto: false = "Auto", true = "..." đang mở game
+    var autoTapped by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+
     Surface(
         shape = RoundedCornerShape(20.dp),
         color = Color.White,
@@ -264,19 +274,56 @@ private fun LocationCard(state: HomeUiState, onClick: () -> Unit) {
                     fontSize = 12.sp,
                 )
             }
+            // Chip "Auto" / "..." — bấm vào sẽ launch Free Fire
             Text(
-                shown?.let { "${it.pingMs} ms" } ?: "Auto",
+                text = if (shown != null) {
+                    "${shown.pingMs} ms"
+                } else {
+                    if (autoTapped) "..." else "Auto"
+                },
                 modifier = Modifier
                     .clip(RoundedCornerShape(50))
-                    .background(FoxyColors.PingChip)
-                    .padding(horizontal = 10.dp, vertical = 6.dp),
-                color = FoxyColors.Violet2,
+                    .background(
+                        if (autoTapped && shown == null) Color(0xFFFF4E00)
+                        else FoxyColors.PingChip
+                    )
+                    .padding(horizontal = 10.dp, vertical = 6.dp)
+                    .clickable(enabled = shown == null) {
+                        // Khi bấm vào "Auto": đổi thành "...", rồi mở Free Fire
+                        if (!autoTapped) {
+                            autoTapped = true
+                            try {
+                                val intent = Intent().apply {
+                                    component = ComponentName(
+                                        "com.dts.freefireth",
+                                        "com.dts.freefireth.FFMainActivity"
+                                    )
+                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                }
+                                context.startActivity(intent)
+                            } catch (e: Exception) {
+                                // Game chưa cài — thử mở qua package launcher
+                                try {
+                                    val launchIntent = context.packageManager
+                                        .getLaunchIntentForPackage("com.dts.freefireth")
+                                    if (launchIntent != null) {
+                                        context.startActivity(launchIntent)
+                                    }
+                                } catch (_: Exception) {}
+                            }
+                            // Reset lại sau 2 giây
+                            android.os.Handler(android.os.Looper.getMainLooper())
+                                .postDelayed({ autoTapped = false }, 2000)
+                        }
+                    },
+                color = if (autoTapped && shown == null) Color.White else FoxyColors.Violet2,
                 fontSize = 12.sp,
                 fontWeight = FontWeight.SemiBold,
             )
         }
     }
 }
+
 
 @Composable
 private fun StatItem(value: String, label: String, modifier: Modifier = Modifier) {

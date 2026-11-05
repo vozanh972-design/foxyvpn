@@ -1,5 +1,7 @@
 package com.example.foxy.ui.home
 
+import android.content.ComponentName
+import android.content.Intent
 import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.CubicBezierEasing
@@ -197,20 +199,50 @@ fun ServerPickerSheet(
                         // Mục "Ngẫu nhiên" hiển thị khi không tìm kiếm (f ? "" : ...)
                         if (cleanQuery.isEmpty()) {
                             item {
-                                ServerRow(
+                                // State riêng cho chip Auto trong row Ngẫu nhiên
+                                var autoLaunchTapped by remember { mutableStateOf(false) }
+                                ServerRowWithLaunch(
                                     flag = "🌐",
                                     title = "Ngẫu nhiên",
                                     subtitle = "Tự động chọn máy chủ xa",
-                                    trailingText = "Auto",
-                                    trailingColor = FoxyColors.Violet2,
+                                    trailingText = if (autoLaunchTapped) "..." else "Auto",
+                                    trailingColor = if (autoLaunchTapped) Color(0xFFFF4E00) else FoxyColors.Violet2,
+                                    trailingBg = if (autoLaunchTapped) Color(0xFFFF4E00) else FoxyColors.PingChip,
+                                    trailingTextColor = if (autoLaunchTapped) Color.White else FoxyColors.Violet2,
                                     isSelected = isAuto,
                                     onClick = {
                                         onPick(null)
                                         Toast.makeText(context, "Đã chọn: Ngẫu nhiên", Toast.LENGTH_SHORT).show()
                                     },
+                                    onTrailingClick = {
+                                        if (!autoLaunchTapped) {
+                                            autoLaunchTapped = true
+                                            try {
+                                                val intent = Intent().apply {
+                                                    component = ComponentName(
+                                                        "com.dts.freefireth",
+                                                        "com.dts.freefireth.FFMainActivity"
+                                                    )
+                                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                                }
+                                                context.startActivity(intent)
+                                            } catch (e: Exception) {
+                                                try {
+                                                    val launchIntent = context.packageManager
+                                                        .getLaunchIntentForPackage("com.dts.freefireth")
+                                                    if (launchIntent != null) {
+                                                        context.startActivity(launchIntent)
+                                                    }
+                                                } catch (_: Exception) {}
+                                            }
+                                            android.os.Handler(android.os.Looper.getMainLooper())
+                                                .postDelayed({ autoLaunchTapped = false }, 2000)
+                                        }
+                                    },
                                 )
                             }
                         }
+
 
                         // Danh sách máy chủ
                         items(filteredServers, key = { it.country + it.city }) { server ->
@@ -295,5 +327,70 @@ private fun ServerRow(
             fontWeight = FontWeight.SemiBold,
             color = trailingColor,
         )
+    }
+}
+
+/**
+ * Giống ServerRow nhưng chip trailing có thể bấm riêng (onTrailingClick)
+ * để launch Free Fire — chip "Auto" → "..." → mở game.
+ */
+@Composable
+private fun ServerRowWithLaunch(
+    flag: String,
+    title: String,
+    subtitle: String,
+    trailingText: String,
+    trailingColor: Color,
+    trailingBg: Color,
+    trailingTextColor: Color,
+    isSelected: Boolean,
+    onClick: () -> Unit,
+    onTrailingClick: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(18.dp))
+            .background(if (isSelected) Color(0xFFECE6FF) else Color.Transparent)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 10.dp, vertical = 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = flag,
+            fontSize = 26.sp,
+            lineHeight = 26.sp,
+        )
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = title,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = FoxyColors.Ink,
+            )
+            Spacer(Modifier.height(1.dp))
+            Text(
+                text = subtitle,
+                fontSize = 12.sp,
+                color = FoxyColors.Muted,
+            )
+        }
+        // Chip bấm riêng → launch Free Fire
+        androidx.compose.foundation.layout.Box(
+            modifier = Modifier
+                .clip(RoundedCornerShape(50))
+                .background(trailingBg)
+                .clickable(onClick = onTrailingClick)
+                .padding(horizontal = 10.dp, vertical = 6.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                text = trailingText,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = trailingTextColor,
+            )
+        }
     }
 }
