@@ -52,10 +52,16 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import android.widget.Toast
 import com.example.foxy.R
 import com.example.foxy.ui.theme.FoxyColors
 
@@ -358,86 +364,298 @@ private fun SettingRow(title: String, subtitle: String, checked: Boolean, onChec
 // Nội dung Panel Gói của tôi
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Nội dung Panel Gói của tôi (Thiết kế cao cấp, tinh xảo, chuẩn Foxy Design)
+// ---------------------------------------------------------------------------
+
 @Composable
 private fun AccountContent(userKey: String?) {
-    val displayKey = remember(userKey) {
-        val k = userKey?.ifBlank { null } ?: "ABCD1234EFGH5678"
-        if (k.length >= 16) "${k.take(4)}-••••-••••-${k.takeLast(4)}" else k
+    val context = LocalContext.current
+    val clipboard = LocalClipboardManager.current
+
+    val rawKey = userKey?.ifBlank { null } ?: "ABCD1234EFGH5678"
+    val displayKey = remember(rawKey) {
+        if (rawKey.length >= 16) "${rawKey.take(4)}-••••-••••-${rawKey.takeLast(4)}" else rawKey
     }
 
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 16.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(14.dp),
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Box(
+        // 1. Hồ sơ gói: Logo thương hiệu Foxy + Tên gói & Trạng thái hoạt động
+        Row(
             modifier = Modifier
-                .size(56.dp)
-                .clip(CircleShape)
-                .background(FoxyColors.Sun),
-            contentAlignment = Alignment.Center,
+                .fillMaxWidth()
+                .padding(vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            Text("F", color = FoxyColors.Violet, fontSize = 22.sp, fontWeight = FontWeight.ExtraBold)
-        }
-        Column {
-            Text("Gói Premium", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = FoxyColors.Ink)
-            Spacer(Modifier.height(2.dp))
-            Text("Đang hoạt động", fontSize = 12.sp, color = FoxyColors.Muted)
-        }
-    }
-
-    InfoRow(label = "Key của bạn", value = displayKey)
-
-    Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 5.dp),
-        shape = RoundedCornerShape(18.dp),
-        color = Color.White,
-        shadowElevation = 1.dp,
-    ) {
-        Column(Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
-            Text("Hết hạn", fontSize = 12.sp, color = FoxyColors.Muted)
-            Spacer(Modifier.height(4.dp))
-            Text("03/12/2026 · còn 28 ngày", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = FoxyColors.Ink)
-            Spacer(Modifier.height(10.dp))
+            // Icon hộp thương hiệu Foxy sang trọng
             Box(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .height(6.dp)
-                    .clip(RoundedCornerShape(6.dp))
-                    .background(Color(0xFFECE6FF)),
+                    .size(54.dp)
+                    .clip(RoundedCornerShape(18.dp))
+                    .background(FoxyColors.Violet),
+                contentAlignment = Alignment.Center,
             ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth(0.78f)
-                        .fillMaxHeight()
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(FoxyColors.Violet2),
+                Image(
+                    painter = painterResource(id = R.drawable.ic_foxy_logo),
+                    contentDescription = "Foxy Logo",
+                    modifier = Modifier.size(34.dp),
                 )
             }
+
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Gói Premium",
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = FoxyColors.Ink,
+                    letterSpacing = (-0.5).sp,
+                )
+                Spacer(Modifier.height(4.dp))
+                // Tag "Đang hoạt động" xanh ngọc emerald
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(99.dp))
+                        .background(Color(0xFFE8F8F0))
+                        .padding(horizontal = 8.dp, vertical = 3.dp),
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(6.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFF14A85A)),
+                    )
+                    Text(
+                        text = "Đang hoạt động",
+                        fontSize = 11.5.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Color(0xFF14A85A),
+                    )
+                }
+            }
         }
-    }
 
-    InfoRow(label = "Thiết bị đang dùng", value = "2 / 5 thiết bị")
-}
+        Spacer(Modifier.height(4.dp))
 
-@Composable
-private fun InfoRow(label: String, value: String) {
-    Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 5.dp),
-        shape = RoundedCornerShape(18.dp),
-        color = Color.White,
-        shadowElevation = 1.dp,
-    ) {
-        Column(Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
-            Text(label, fontSize = 12.sp, color = FoxyColors.Muted)
-            Spacer(Modifier.height(2.dp))
-            Text(value, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = FoxyColors.Ink)
+        // 2. Thẻ Key của bạn (.row)
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(18.dp),
+            color = Color.White,
+            border = BorderStroke(1.dp, FoxyColors.Line),
+            shadowElevation = 1.dp,
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 14.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Key của bạn",
+                        fontSize = 12.sp,
+                        color = FoxyColors.Muted,
+                        fontWeight = FontWeight.Medium,
+                    )
+                    Spacer(Modifier.height(3.dp))
+                    Text(
+                        text = displayKey,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = FoxyColors.Ink,
+                        letterSpacing = 1.sp,
+                        style = TextStyle(fontFeatureSettings = "tnum"),
+                    )
+                }
+
+                // Nút Sao chép key
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(99.dp))
+                        .background(Color(0xFFECE6FF))
+                        .clickable {
+                            clipboard.setText(AnnotatedString(rawKey))
+                            Toast.makeText(context, "Đã sao chép key!", Toast.LENGTH_SHORT).show()
+                        }
+                        .padding(horizontal = 12.dp, vertical = 7.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = "Sao chép",
+                        color = FoxyColors.Violet2,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
+            }
+        }
+
+        // 3. Thẻ Hạn dùng & Thanh tiến trình (.row)
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(18.dp),
+            color = Color.White,
+            border = BorderStroke(1.dp, FoxyColors.Line),
+            shadowElevation = 1.dp,
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 14.dp),
+            ) {
+                Text(
+                    text = "Hết hạn",
+                    fontSize = 12.sp,
+                    color = FoxyColors.Muted,
+                    fontWeight = FontWeight.Medium,
+                )
+                Spacer(Modifier.height(3.dp))
+                Text(
+                    text = "03/12/2026 · còn 28 ngày",
+                    fontSize = 15.5.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = FoxyColors.Ink,
+                    style = TextStyle(fontFeatureSettings = "tnum"),
+                )
+                Spacer(Modifier.height(8.dp))
+
+                // Thanh tiến trình chuẩn HTML .bar
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(6.dp)
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(Color(0xFFECE6FF)),
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth(0.78f)
+                            .fillMaxHeight()
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(FoxyColors.Violet2),
+                    )
+                }
+            }
+        }
+
+        // 4. Thẻ Thiết bị đang dùng (.row)
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(18.dp),
+            color = Color.White,
+            border = BorderStroke(1.dp, FoxyColors.Line),
+            shadowElevation = 1.dp,
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 14.dp),
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column {
+                        Text(
+                            text = "Thiết bị đang dùng",
+                            fontSize = 12.sp,
+                            color = FoxyColors.Muted,
+                            fontWeight = FontWeight.Medium,
+                        )
+                        Spacer(Modifier.height(3.dp))
+                        Text(
+                            text = "2 / 5 thiết bị",
+                            fontSize = 15.5.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = FoxyColors.Ink,
+                        )
+                    }
+
+                    // 5 chấm chỉ số thiết bị (2 hoạt động, 3 khả dụng)
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        repeat(5) { i ->
+                            Box(
+                                modifier = Modifier
+                                    .size(10.dp)
+                                    .clip(CircleShape)
+                                    .background(if (i < 2) FoxyColors.Violet2 else Color(0xFFE4DEF8)),
+                            )
+                        }
+                    }
+                }
+
+                Spacer(Modifier.height(10.dp))
+                Box(Modifier.fillMaxWidth().height(1.dp).background(FoxyColors.Line))
+                Spacer(Modifier.height(8.dp))
+
+                // Danh sách thiết bị kết nối rõ ràng, chân thực
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        "📱 Thiết bị này (Android)",
+                        fontSize = 13.sp,
+                        color = FoxyColors.Ink,
+                        fontWeight = FontWeight.Medium,
+                    )
+                    Text(
+                        "Đang kết nối",
+                        fontSize = 11.5.sp,
+                        color = Color(0xFF14A85A),
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
+                Spacer(Modifier.height(4.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        "💻 Máy tính Windows",
+                        fontSize = 13.sp,
+                        color = FoxyColors.Muted,
+                    )
+                    Text(
+                        "Đã đồng bộ",
+                        fontSize = 11.5.sp,
+                        color = FoxyColors.Muted,
+                    )
+                }
+            }
+        }
+
+        Spacer(Modifier.height(12.dp))
+
+        // 5. Nút Gia hạn gói (.go) - Chuẩn thiết kế Foxy Sun
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(54.dp)
+                .shadow(6.dp, RoundedCornerShape(27.dp), ambientColor = Color(0x33FFD23F), spotColor = Color(0x66FFD23F)),
+            shape = RoundedCornerShape(27.dp),
+            color = FoxyColors.Sun,
+            onClick = {
+                Toast.makeText(context, "Hệ thống gia hạn sẽ sớm kích hoạt!", Toast.LENGTH_SHORT).show()
+            },
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Text(
+                    text = "Gia hạn thêm ngày",
+                    color = FoxyColors.Violet,
+                    fontSize = 15.5.sp,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
         }
     }
 }
