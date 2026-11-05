@@ -46,7 +46,8 @@ class KeyViewModel(application: Application) : AndroidViewModel(application) {
 
         viewModelScope.launch {
             _state.update { it.copy(isLoading = true, error = null) }
-            val valid = validateKey(current.raw)
+            val signature = keyStore.getOrCreateDeviceSignature()
+            val valid = validateKey(current.raw, signature)
             if (valid) {
                 keyStore.save(current.raw)
                 _state.update { it.copy(isLoading = false, activated = true) }
@@ -57,11 +58,11 @@ class KeyViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /**
-     * Tạm thời chấp nhận mọi key người dùng nhập (sau này sẽ kết nối API server).
+     * Xác thực key kèm chữ ký thiết bị trọn đời (sau này sẽ gửi lên API server: key + deviceSignature).
      */
-    private suspend fun validateKey(raw: String): Boolean {
+    private suspend fun validateKey(raw: String, deviceSignature: String): Boolean {
         delay(600)
-        return raw.isNotBlank()
+        return raw.isNotBlank() && deviceSignature.isNotEmpty()
     }
 
     private fun sanitize(input: String): String =

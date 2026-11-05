@@ -10,11 +10,15 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.size
+import androidx.compose.ui.res.painterResource
+import com.example.foxy.R
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -114,7 +118,17 @@ fun KeyContent(
                 .imePadding()
                 .padding(horizontal = 24.dp, vertical = 26.dp),
         ) {
-            Text("Foxy", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Image(
+                    painter = painterResource(id = R.drawable.ic_foxy_logo),
+                    contentDescription = "Foxy Logo",
+                    modifier = Modifier.size(24.dp),
+                )
+                Text("Foxy", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+            }
 
             Spacer(Modifier.weight(1f))
 

@@ -31,10 +31,17 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
-      - name: Build Debug APK (Parallel & Cached)
-        run: ./gradlew assembleDebug --no-daemon --parallel --build-cache
+      - name: Build Release & Debug APKs (Parallel & Optimized)
+        run: ./gradlew assembleRelease assembleDebug --no-daemon --parallel --build-cache
 
-      - name: Upload APK Artifact
+      - name: Upload Optimized Release APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: FoxyVPN-Release-Optimized-APK
+          path: app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: error
+
+      - name: Upload Debug APK
         uses: actions/upload-artifact@v4
         with:
           name: FoxyVPN-Debug-APK
@@ -46,16 +53,22 @@ jobs:
         if: github.ref == 'refs/heads/main'
         with:
           tag_name: v1.0.0
-          name: "Foxy VPN v1.0.0 (Debug APK)"
+          name: "Foxy VPN v1.0.0 (Release Optimized)"
           body: |
-            ### 🦊 Foxy VPN - Bản cài đặt thử nghiệm (Debug APK)
+            ### 🦊 Foxy VPN - Bản cài đặt tối ưu hóa (Release APK)
             - **Phiên bản:** 1.0.0
             - **Công nghệ:** Kotlin + Jetpack Compose (Material3)
-            - **Tính năng mới:** Giao diện Splash chuẩn SVG, tự động co giãn kích thước theo từng dòng máy (Responsive Density).
+            - **Tối ưu hóa:** Đã bật R8 Code Minification và Resource Shrinking giúp app chạy cực nhẹ, tiết kiệm RAM/Pin.
+            - **Tính năng mới:**
+              - Logo Foxy trước tên thương hiệu trên màn nhập Key.
+              - Chữ ký thiết bị vĩnh viễn (Lifetime Hardware Signature) chống ghi đè, dùng suốt đời.
+              - Tự động co giãn theo mọi kích cỡ màn hình (Responsive Density).
             
-            👉 Tải trực tiếp file `app-debug.apk` bên dưới về điện thoại Android để cài đặt.
+            👉 **Khuyên dùng:** Tải file `app-release.apk` bên dưới để cài đặt bản tối ưu siêu nhẹ.
           draft: false
           prerelease: false
-          files: app/build/outputs/apk/debug/app-debug.apk
+          files: |
+            app/build/outputs/apk/release/app-release.apk
+            app/build/outputs/apk/debug/app-debug.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
