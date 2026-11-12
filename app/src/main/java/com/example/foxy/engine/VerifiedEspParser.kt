@@ -106,13 +106,15 @@ object VerifiedEspParser {
 
         EspEntityStore.updateLocal(id, x, y, z)
 
-        // Direction fields[13..15]
+        // Direction fields[13..15] — SIGNED 16-bit (toShort() để xử lý dấu âm)
+        // Nếu không toShort(): dx=-0.7 → lưu unsigned 32769 → 32769/32767=+1.0 (SAI!)
+        // Với toShort():        32769.toShort() = -32767 → -32767/32767 = -1.0  (ĐÚNG!)
         if (fields.size >= 16) {
-            val dx = fields[13].toInt() / 32767f
-            val dy = fields[14].toInt() / 32767f
-            val dz = fields[15].toInt() / 32767f
+            val dx = fields[13].toInt().toShort() / 32767f
+            val dy = fields[14].toInt().toShort() / 32767f
+            val dz = fields[15].toInt().toShort() / 32767f
             val mag2 = dx * dx + dy * dy + dz * dz
-            if (mag2.isFinite() && mag2 > 0.25f && mag2 < 4f) {
+            if (mag2.isFinite() && mag2 > 0.1f && mag2 < 4f) {
                 EspEntityStore.updateDirection(dx, dy, dz)
             }
         }

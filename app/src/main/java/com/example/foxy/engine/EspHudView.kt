@@ -70,7 +70,7 @@ class EspHudView(context: Context) : View(context) {
         val seen = HashSet<Int>()
 
         for (entity in snapshot.entities) {
-            if (entity.dead) continue
+            // Không filter dead — user muốn thấy cả knocked players
 
             val dx = entity.x - (snapshot.localPlayer?.x ?: 0f)
             val dy = entity.y - (snapshot.localPlayer?.y ?: 0f)

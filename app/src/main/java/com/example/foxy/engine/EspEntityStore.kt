@@ -123,7 +123,7 @@ object EspEntityStore {
         val stale = mutableListOf<Int>()
         for ((id, e) in entities) {
             if (now - e.updatedAt > ENTITY_TTL_MS) stale += id
-            else if (!e.dead) alive += e
+            else alive += e   // Bao gồm cả dead (knocked) — user muốn thấy tất cả
         }
         stale.forEach { entities.remove(it) }
         val dir = direction
