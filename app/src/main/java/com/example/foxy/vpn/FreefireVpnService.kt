@@ -76,9 +76,8 @@ class FreefireVpnService : VpnService() {
                     .setMtu(MTU)
                     .setBlocking(true)   // Blocking mode cho tunnel engine
 
-                // Bypass game process khỏi VPN loop (tránh vòng lặp)
-                try { builder.addDisallowedApplication("com.dts.freefireth") } catch (_: Exception) {}
-                try { builder.addDisallowedApplication("com.dts.freefiremax") } catch (_: Exception) {}
+                // KHÔNG bypass game — packet game phải đi qua tunnel để ESP hoạt động
+                // (chỉ bypass app VPN của chính mình nếu có vòng lặp)
 
                 val tun = builder.establish() ?: run {
                     Log.e(TAG, "establish() returned null")
