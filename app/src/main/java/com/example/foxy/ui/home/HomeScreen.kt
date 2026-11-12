@@ -3,6 +3,7 @@ package com.example.foxy.ui.home
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -43,13 +44,14 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.path
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -58,6 +60,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.foxy.R
 import com.example.foxy.ui.theme.VeilColors as C
 import com.example.foxy.ui.theme.VeilTheme
 import java.util.Locale
@@ -260,35 +263,26 @@ internal fun SignalBars(level: Int) {
 /** Cờ vẽ bằng Canvas cho vài nước. Nước khác: thay bằng ảnh cờ thật (drawable/Coil). */
 @Composable
 fun CountryFlag(code: String, size: Dp) {
+    if (code == "FF" || code == "FFMAX") {
+        Image(
+            painter = painterResource(
+                if (code == "FFMAX") R.drawable.logo_freefire_max else R.drawable.logo_freefire
+            ),
+            contentDescription = if (code == "FFMAX") "Free Fire Max" else "Free Fire",
+            contentScale = ContentScale.Crop,
+            modifier = Modifier
+                .size(size)
+                .clip(CircleShape)
+                .border(1.dp, C.Border, CircleShape),
+        )
+        return
+    }
     val red = Color(0xFFC9504A); val blue = Color(0xFF3E5A8C)
     Canvas(Modifier.size(size).clip(CircleShape).border(1.dp, C.Border, CircleShape)) {
         val u = this.size.width / 36f
         fun rect(c: Color, x: Float, y: Float, w: Float, h: Float) =
             drawRect(c, Offset(x * u, y * u), Size(w * u, h * u))
         when (code) {
-            "FF", "FFMAX" -> {
-                rect(Color(0xFF1A1D24), 0f, 0f, 36f, 36f)
-                // Ngọn lửa cam-vàng đặc trưng Free Fire
-                val flame = Path().apply {
-                    moveTo(23f * u, 6f * u)
-                    lineTo(27.5f * u, 13f * u)
-                    lineTo(24f * u, 15.5f * u)
-                    lineTo(26f * u, 20f * u)
-                    lineTo(20f * u, 14.5f * u)
-                    close()
-                }
-                drawPath(flame, Color(0xFFFF7A00))
-                // Hai chữ F sắc cạnh màu trắng
-                rect(Color.White, 8.5f, 11f, 3.2f, 15f)
-                rect(Color.White, 8.5f, 11f, 8.5f, 3.2f)
-                rect(Color.White, 8.5f, 16.5f, 6.5f, 2.8f)
-                rect(Color.White, 19.5f, 11f, 3.2f, 15f)
-                rect(Color.White, 19.5f, 11f, 8.5f, 3.2f)
-                rect(Color.White, 19.5f, 16.5f, 6.5f, 2.8f)
-                if (code == "FFMAX") {
-                    drawCircle(Color(0xFFFFB300), 3.2f * u, Offset(28.5f * u, 28f * u))
-                }
-            }
             "US" -> {
                 rect(Color.White, 0f, 0f, 36f, 36f)
                 listOf(0f, 9.2f, 18.4f, 27.6f).forEach { rect(red, 0f, it, 36f, 4.6f) }

@@ -25,10 +25,12 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.CheckCircle
-import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
@@ -161,7 +163,7 @@ class MainActivity : ComponentActivity() {
                                     }
 
                                     if (showPicker) {
-                                        GamePickerDialog(
+                                        GamePickerSheet(
                                             selected = homeState.selectedGame,
                                             onClose = { showPicker = false },
                                             onSelect = {
@@ -180,40 +182,63 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun GamePickerDialog(
+private fun GamePickerSheet(
     selected: GameOption,
     onClose: () -> Unit,
     onSelect: (GameOption) -> Unit,
 ) {
-    AlertDialog(
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    ModalBottomSheet(
         onDismissRequest = onClose,
+        sheetState = sheetState,
         containerColor = Color.White,
-        title = { Text("Chọn phiên bản game", fontWeight = FontWeight.Bold, color = VeilColors.Ink, fontSize = 18.sp) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                GameOption.entries.forEach { game ->
-                    val on = game == selected
-                    val shape = RoundedCornerShape(16.dp)
-                    Row(
-                        Modifier.fillMaxWidth().clip(shape)
-                            .background(if (on) VeilColors.AccentTint else VeilColors.Background)
-                            .border(1.5.dp, if (on) VeilColors.Accent else VeilColors.Border, shape)
-                            .clickable { onSelect(game) }
-                            .padding(horizontal = 14.dp, vertical = 12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    ) {
-                        CountryFlag(game.code, 36.dp)
-                        Column(Modifier.weight(1f)) {
-                            Text(game.displayName, fontWeight = FontWeight.Bold, color = VeilColors.Ink, fontSize = 15.sp)
-                            Text("Tự động", color = VeilColors.Muted, fontSize = 12.sp)
-                        }
-                        if (on) Icon(Icons.Rounded.CheckCircle, null, Modifier.size(22.dp), tint = VeilColors.AccentText)
-                    }
+        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = 20.dp, end = 20.dp, bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Text(
+                    text = "Chọn phiên bản game",
+                    fontWeight = FontWeight.Bold,
+                    color = VeilColors.Ink,
+                    fontSize = 18.sp,
+                )
+                TextButton(onClick = onClose) {
+                    Text("Đóng", color = VeilColors.AccentText, fontWeight = FontWeight.SemiBold)
                 }
             }
-        },
-        confirmButton = { TextButton(onClick = onClose) { Text("Đóng", color = VeilColors.AccentText) } },
-    )
+            GameOption.entries.forEach { game ->
+                val on = game == selected
+                val shape = RoundedCornerShape(16.dp)
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .clip(shape)
+                        .background(if (on) VeilColors.AccentTint else VeilColors.Background)
+                        .border(1.5.dp, if (on) VeilColors.Accent else VeilColors.Border, shape)
+                        .clickable { onSelect(game) }
+                        .padding(horizontal = 14.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    CountryFlag(game.code, 38.dp)
+                    Column(Modifier.weight(1f)) {
+                        Text(game.displayName, fontWeight = FontWeight.Bold, color = VeilColors.Ink, fontSize = 15.sp)
+                        Text("Tự động", color = VeilColors.Muted, fontSize = 12.sp)
+                    }
+                    if (on) Icon(Icons.Rounded.CheckCircle, null, Modifier.size(22.dp), tint = VeilColors.AccentText)
+                }
+            }
+        }
+    }
 }

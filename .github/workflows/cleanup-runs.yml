@@ -1,0 +1,47 @@
+name: Cleanup Old Actions
+
+on:
+  workflow_dispatch:
+    inputs:
+      keep_latest:
+        description: "Số lần chạy mới nhất muốn giữ lại (0 = xóa toàn bộ bản cũ cả xanh và đỏ)"
+        required: true
+        default: "0"
+        type: string
+
+permissions:
+  actions: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete old workflow runs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          KEEP: ${{ inputs.keep_latest }}
+          CURRENT_RUN_ID: ${{ github.run_id }}
+          REPO: ${{ github.repository }}
+        run: |
+          keep_num=$(echo "$KEEP" | grep -E '^[0-9]+$' || echo "0")
+          mapfile -t run_ids < <(
+            gh api --paginate "repos/$REPO/actions/runs?per_page=100" \
+              --jq ".workflow_runs[] | select(.status == \"completed\" and (.id | tostring) != \"$CURRENT_RUN_ID\") | .id"
+          )
+
+          total=${#run_ids[@]}
+          echo "Tìm thấy $total lần chạy cũ đã hoàn thành."
+          if [ "$total" -le "$keep_num" ]; then
+            echo "Không có lần chạy nào cần xóa."
+            exit 0
+          fi
+
+          deleted=0
+          for id in "${run_ids[@]:$keep_num}"; do
+            if gh api -X DELETE "repos/$REPO/actions/runs/$id" >/dev/null 2>&1; then
+              deleted=$((deleted + 1))
+            else
+              echo "Bỏ qua run $id (không xóa được)"
+            fi
+          done
+          echo "Đã xóa xong $deleted lần chạy cũ."
