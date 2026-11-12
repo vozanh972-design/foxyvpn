@@ -269,14 +269,24 @@ object PacketProjection {
 
         val ex = wx - cx; val ey = wy - cy; val ez = wz - cz
         val depth = dx*ex + dy*ey + dz*ez
-        if (depth < 0.3f) return null
+        if (depth < 0.5f) return null
 
-        val fovHalfTan = tan(Math.toRadians(hFovDeg * 0.5)).toFloat()
+        // vFovHalfTan = tan(hFov/2) / 1.7778 (matches original line 76)
+        val vFovHalfTan = (tan(Math.toRadians(hFovDeg * 0.5)) / 1.7777777777777778).toFloat()
         val aspect = W / H
 
-        val screenX = W * 0.5f + W * 0.5f * (rx*ex + rz*ez) / (depth * aspect * fovHalfTan)
-        val upDotE  = ey - dy*(dx*ex + dy*ey + dz*ez) / (dx*dx + dy*dy + dz*dz)
-        val screenY = H * 0.5f - H * 0.5f * upDotE / (depth * fovHalfTan)
+        // Right projection (screenX) — denominator = aspect * vFovHalfTan (= hFovHalfTan cho 16:9)
+        val screenX = W * 0.5f + W * 0.5f * (rx*ex + rz*ez) / (depth * maxOf(0.05f, aspect * vFovHalfTan))
+
+        // Up vector = look × right (cross product, NOT Gram-Schmidt)
+        // upX = dy*rz,  upY = dz*rx - dx*rz,  upZ = -dy*rx
+        val upX = dy * rz
+        val upY = dz * rx - dx * rz
+        val upZ = -dy * rx
+        val upDot = upX*ex + upY*ey + upZ*ez
+
+        // screenY denominator = vFovHalfTan (vertical FOV)
+        val screenY = H * 0.5f - H * 0.5f * upDot / (depth * maxOf(0.05f, vFovHalfTan))
 
         if (!screenX.isFinite() || !screenY.isFinite()) return null
         return floatArrayOf(screenX, screenY, depth)
