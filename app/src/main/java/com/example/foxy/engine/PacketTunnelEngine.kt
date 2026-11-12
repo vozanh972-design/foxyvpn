@@ -9,10 +9,13 @@ import java.util.concurrent.*
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * PacketTunnelEngine — Tunnel hoàn chỉnh với TCP proxy + UDP ESP detection.
+ * PacketTunnelEngine — từ Pigboy gốc (PacketTunnelEngine.java).
  *
- * Fix critical: TCP packets trước đây bị drop hoàn toàn → game mất kết nối server.
- * Giờ implement full TCP proxy với SYN/ACK handshake + bi-directional forwarding.
+ * Fixes critical:
+ *   1. workers = newCachedThreadPool() (gốc dùng thế, không phải 8 threads!)
+ *      → Mỗi UDP/TCP flow cần 1 blocking receive thread → 8 threads = exhausted → 999+ ping
+ *   2. UDP: protect() đúng cách
+ *   3. TCP: gửi SYN-ACK ngay sau khi connect đến server thành công
  */
 class PacketTunnelEngine(
     private val vpn:    VpnService,
@@ -20,47 +23,53 @@ class PacketTunnelEngine(
     private val tunOut: FileOutputStream,
 ) {
     companion object {
-        private const val TAG = "TunnelEngine"
-        private const val TCP_FIN = 0x01
-        private const val TCP_SYN = 0x02
-        private const val TCP_RST = 0x04
-        private const val TCP_PSH = 0x08
-        private const val TCP_ACK = 0x10
+        private const val TAG           = "TunnelEngine"
+        private const val TCP_FIN       = 0x01
+        private const val TCP_SYN       = 0x02
+        private const val TCP_RST       = 0x04
+        private const val TCP_PSH       = 0x08
+        private const val TCP_ACK       = 0x10
+        private const val FLOW_IDLE_MS  = 120_000L   // 2 phút idle → xóa flow
+        private const val CLEANUP_MS    = 30_000L
     }
 
-    private val running = AtomicBoolean(false)
-    private val workers = Executors.newScheduledThreadPool(8)
-    private val udpFlows = ConcurrentHashMap<String, UdpFlowState>()
-    private val tcpFlows = ConcurrentHashMap<String, TcpFlowState>()
+    // ─── Giống bản gốc: CachedThreadPool = unlimited threads ────
+    private val running    = AtomicBoolean(false)
+    private val workers    = Executors.newCachedThreadPool()         // ← KEY FIX
+    private val scheduler  = Executors.newSingleThreadScheduledExecutor()
+    private val udpFlows   = ConcurrentHashMap<String, UdpFlowState>()
+    private val tcpFlows   = ConcurrentHashMap<String, TcpFlowState>()
+    private val tunLock    = Any()
     @Volatile private var lastClean = 0L
-    private val tunLock = Any()   // Serialize writes to TUN
 
-    // ─── Start ────────────────────────────────────────────────
+    // ─── Start ────────────────────────────────────────────────────
 
     fun start() {
         running.set(true)
-        Log.i(TAG, "Tunnel started")
+        Log.i(TAG, "Tunnel started (CachedThreadPool)")
+
+        // Maintenance: cleanup idle flows mỗi 30s
+        scheduler.scheduleAtFixedRate({
+            if (running.get()) cleanupFlows()
+        }, 30, 30, TimeUnit.SECONDS)
+
         val buf = ByteArray(65535)
         try {
             while (running.get()) {
-                val len = try { tunIn.read(buf) } catch (e: Exception) { -1 }
-                if (len < 0) break
+                val len = try { tunIn.read(buf) } catch (e: Exception) { break }
                 if (len < 20) continue
-                if ((buf[0].toInt() and 0xF0) shr 4 != 4) continue  // IPv4 only
-                handleIPv4(buf, len)
-                val now = System.currentTimeMillis()
-                if (now - lastClean > 30_000) { lastClean = now; cleanupFlows() }
+                if ((buf[0].toInt() and 0xF0) shr 4 != 4) continue   // IPv4 only
+                handleIPv4(buf.copyOf(len), len)                       // copy để thread-safe
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "Tunnel loop error: $e")
         } finally {
-            Log.i(TAG, "Tunnel stopped")
+            Log.i(TAG, "Tunnel loop ended")
         }
     }
 
     fun stop() {
         running.set(false)
         workers.shutdownNow()
+        scheduler.shutdownNow()
         udpFlows.values.forEach { runCatching { it.socket?.close() } }
         tcpFlows.values.forEach { runCatching { it.socket?.close() } }
         udpFlows.clear(); tcpFlows.clear()
@@ -68,39 +77,43 @@ class PacketTunnelEngine(
         runCatching { tunOut.close() }
     }
 
-    // ─── IPv4 dispatch ────────────────────────────────────────
+    // ─── IPv4 dispatch ─────────────────────────────────────────
 
     private fun handleIPv4(buf: ByteArray, len: Int) {
         val ihl   = (buf[0].toInt() and 0x0F) * 4
-        if (ihl < 20 || ihl >= len) return
+        val ipLen = readU16(buf, 2).coerceAtMost(len)
+        if (ihl < 20 || ipLen < ihl) return
+
+        // Fragment check: offset != 0 → skip (giống gốc: reassembleIpv4)
+        val fragOff = readU16(buf, 6) and 0x1FFF
+        if (fragOff != 0) return
+
         val proto = buf[9].toInt() and 0xFF
         val srcIp = formatIP(buf, 12)
         val dstIp = formatIP(buf, 16)
+
         when (proto) {
-            6  -> handleTcp(buf, ihl, len, srcIp, dstIp)
-            17 -> handleUdp(buf, ihl, len, srcIp, dstIp)
+            6  -> handleTcp(buf, ihl, ipLen, srcIp, dstIp)
+            17 -> handleUdp(buf, ihl, ipLen, srcIp, dstIp)
         }
     }
 
-    // ═══════════════════════════════════════════════════════════
-    // TCP PROXY — Quan trọng nhất! Fix kết nối game bị văng.
-    // Implement full SYN→SYN-ACK→data→FIN state machine.
-    // ═══════════════════════════════════════════════════════════
+    // ══════════════════════════════════════════════════════════════
+    // TCP PROXY — full SYN → SYN-ACK → data → FIN state machine
+    // ══════════════════════════════════════════════════════════════
 
     private fun handleTcp(buf: ByteArray, ihl: Int, len: Int, srcIp: String, dstIp: String) {
-        if (ihl + 20 > len) return
+        if (len < ihl + 20) return
         val srcPort    = readU16(buf, ihl)
         val dstPort    = readU16(buf, ihl + 2)
         val seqNum     = readU32(buf, ihl + 4)
-        val ackNum     = readU32(buf, ihl + 8)
         val dataOffset = ((buf[ihl + 12].toInt() and 0xF0) shr 4) * 4
         val flags      = buf[ihl + 13].toInt() and 0xFF
         val payloadOff = ihl + dataOffset
         val payload    = if (payloadOff < len) buf.copyOfRange(payloadOff, len) else ByteArray(0)
+        val flowKey    = "$srcIp:$srcPort→$dstIp:$dstPort"
 
-        val flowKey = "$srcIp:$srcPort→$dstIp:$dstPort"
-
-        // Scan TCP payload để học encryption key
+        // Scan payload để học game encryption key
         if (payload.isNotEmpty()) {
             workers.submit { GameProtocolEngine.scanTcp(flowKey, payload, dstPort) }
         }
@@ -109,60 +122,70 @@ class PacketTunnelEngine(
         val isFin = (flags and TCP_FIN) != 0
         val isRst = (flags and TCP_RST) != 0
 
-        // RST: đóng flow ngay
-        if (isRst) { tcpFlows.remove(flowKey)?.socket?.close(); return }
-
-        // ─── SYN: tạo kết nối mới ───────────────────────────
-        if (isSyn) {
+        if (isRst) {
             tcpFlows.remove(flowKey)?.socket?.close()
-            val flow = TcpFlowState(dstIp, dstPort, srcIp, srcPort, seqNum)
+            return
+        }
+
+        if (isSyn) {
+            // Đóng flow cũ nếu có
+            tcpFlows.remove(flowKey)?.socket?.close()
+            val flow = TcpFlowState(srcIp, srcPort, dstIp, dstPort, seqNum)
             tcpFlows[flowKey] = flow
 
+            // Mở kết nối đến real server trong thread riêng
             workers.submit {
                 try {
                     val sock = Socket()
                     vpn.protect(sock)   // Bypass VPN loop!
-                    sock.connect(InetSocketAddress(dstIp, dstPort), 10_000)
+                    sock.soTimeout = 30_000
                     sock.tcpNoDelay = true
+                    sock.connect(InetSocketAddress(dstIp, dstPort), 10_000)
+
                     flow.socket    = sock
                     flow.connected = true
 
-                    // Gửi SYN-ACK về game client
+                    // Gửi SYN-ACK về game
                     writeTun(buildTcpPkt(dstIp, dstPort, srcIp, srcPort,
-                        seq = flow.myIsn, ack = seqNum + 1L,
-                        flags = TCP_SYN or TCP_ACK, win = 65535, data = ByteArray(0)))
+                        seq  = flow.myIsn,
+                        ack  = seqNum + 1L,
+                        flags = TCP_SYN or TCP_ACK,
+                        win  = 65535, data = ByteArray(0)))
                     flow.clientNext = seqNum + 1L
                     flow.serverNext = flow.myIsn + 1L
 
-                    // Thread đọc từ server → ghi vào TUN (inbound)
+                    // Thread đọc server → inject vào TUN
                     workers.submit { tcpServerToClient(flow, flowKey, srcIp, srcPort, dstIp, dstPort) }
 
                 } catch (e: Exception) {
                     Log.w(TAG, "TCP connect $dstIp:$dstPort failed: $e")
-                    // RST về client
                     writeTun(buildTcpPkt(dstIp, dstPort, srcIp, srcPort,
-                        seq = 0, ack = seqNum + 1L, flags = TCP_RST or TCP_ACK, win = 0, data = ByteArray(0)))
+                        seq = 0, ack = seqNum + 1L,
+                        flags = TCP_RST or TCP_ACK, win = 0, data = ByteArray(0)))
                     tcpFlows.remove(flowKey)
                 }
             }
             return
         }
 
-        // ─── Các packet tiếp theo: forward data ─────────────
+        // Data / FIN
         val flow = tcpFlows[flowKey] ?: return
+
+        // Đợi connected (tối đa 500ms, không block tunnel thread)
         if (!flow.connected) return
+
         flow.lastUsed = System.currentTimeMillis()
 
         if (payload.isNotEmpty()) {
             try {
-                flow.socket?.outputStream?.let { out ->
-                    out.write(payload)
-                    out.flush()
-                }
-                flow.clientNext = seqNum + payload.size.toLong()
-                // ACK data từ client
+                flow.socket?.outputStream?.write(payload)
+                flow.socket?.outputStream?.flush()
+                flow.clientNext = flow.clientNext + payload.size
+
+                // ACK lại cho game
                 writeTun(buildTcpPkt(dstIp, dstPort, srcIp, srcPort,
-                    seq = flow.serverNext, ack = flow.clientNext,
+                    seq   = flow.serverNext,
+                    ack   = flow.clientNext,
                     flags = TCP_ACK, win = 65535, data = ByteArray(0)))
             } catch (e: Exception) {
                 Log.w(TAG, "TCP forward error: $e")
@@ -172,16 +195,17 @@ class PacketTunnelEngine(
 
         if (isFin) {
             flow.clientNext++
-            try { flow.socket?.shutdownOutput() } catch (_: Exception) {}
+            runCatching { flow.socket?.shutdownOutput() }
             writeTun(buildTcpPkt(dstIp, dstPort, srcIp, srcPort,
-                seq = flow.serverNext, ack = flow.clientNext,
+                seq   = flow.serverNext,
+                ack   = flow.clientNext,
                 flags = TCP_FIN or TCP_ACK, win = 0, data = ByteArray(0)))
             flow.serverNext++
-            workers.schedule({ tcpFlows.remove(flowKey)?.socket?.close() }, 15, TimeUnit.SECONDS)
+            scheduler.schedule({ tcpFlows.remove(flowKey)?.socket?.close() }, 15, TimeUnit.SECONDS)
         }
     }
 
-    /** Thread đọc data từ real server → inject vào TUN về phía client. */
+    /** Thread riêng: đọc từ real server → inject vào TUN về phía game. */
     private fun tcpServerToClient(
         flow: TcpFlowState,
         flowKey: String,
@@ -190,84 +214,104 @@ class PacketTunnelEngine(
     ) {
         val buf = ByteArray(32768)
         try {
-            while (running.get()) {
-                val n = flow.socket?.inputStream?.read(buf) ?: break
+            val input = flow.socket?.inputStream ?: return
+            while (running.get() && !flow.socket!!.isClosed) {
+                val n = input.read(buf)
                 if (n <= 0) break
                 val data = buf.copyOf(n)
                 writeTun(buildTcpPkt(serverIp, serverPort, clientIp, clientPort,
-                    seq = flow.serverNext, ack = flow.clientNext,
-                    flags = TCP_PSH or TCP_ACK, win = 65535, data = data))
+                    seq   = flow.serverNext,
+                    ack   = flow.clientNext,
+                    flags = TCP_PSH or TCP_ACK,
+                    win   = 65535, data = data))
                 flow.serverNext += n.toLong()
                 flow.lastUsed = System.currentTimeMillis()
             }
         } catch (_: Exception) {}
-        // Server đóng → gửi FIN về client
-        try {
+
+        // Server đóng → gửi FIN về game
+        runCatching {
             writeTun(buildTcpPkt(serverIp, serverPort, clientIp, clientPort,
-                seq = flow.serverNext, ack = flow.clientNext,
+                seq   = flow.serverNext,
+                ack   = flow.clientNext,
                 flags = TCP_FIN or TCP_ACK, win = 0, data = ByteArray(0)))
-        } catch (_: Exception) {}
+        }
         tcpFlows.remove(flowKey)?.socket?.close()
     }
 
-    // ═══════════════════════════════════════════════════════════
-    // UDP PROXY + ESP Detection
-    // ═══════════════════════════════════════════════════════════
+    // ══════════════════════════════════════════════════════════════
+    // UDP PROXY + ESP Detection (game ports 10000-10100)
+    // ══════════════════════════════════════════════════════════════
 
     private fun handleUdp(buf: ByteArray, ihl: Int, len: Int, srcIp: String, dstIp: String) {
-        if (ihl + 8 >= len) return
+        if (len < ihl + 8) return
         val srcPort = readU16(buf, ihl)
         val dstPort = readU16(buf, ihl + 2)
-        val udpData = buf.copyOfRange(ihl + 8, len)
+        val udpLen  = readU16(buf, ihl + 4).coerceAtMost(len - ihl)
+        if (udpLen < 8) return
+        val udpData = buf.copyOfRange(ihl + 8, ihl + udpLen)
         val flowKey = "$srcIp:$srcPort→$dstIp:$dstPort"
 
-        // === ESP detection + Freeze (outbound: game → server) ===
-        GameProtocolEngine.processUdp(flowKey, udpData, true)
-        val modified = PoseFreezeEngine.process(flowKey, udpData, true)
+        // === ESP detection + Freeze rewrite (outbound: game → server) ===
+        try { GameProtocolEngine.processUdp(flowKey, udpData, true) } catch (_: Exception) {}
+        val modified = try { PoseFreezeEngine.process(flowKey, udpData, true) } catch (_: Exception) { null }
 
-        // Forward đến real server
+        // Lấy hoặc tạo UDP flow
         val flow = udpFlows.getOrPut(flowKey) {
-            UdpFlowState(dstIp, dstPort).also { f ->
-                runCatching {
+            UdpFlowState().also { f ->
+                try {
                     val sock = DatagramSocket()
-                    vpn.protect(sock)
+                    vpn.protect(sock)   // Bypass VPN loop!
+                    sock.soTimeout = 60_000
                     f.socket = sock
+                    // Thread riêng đọc server → inject TUN (unlimited pool → không exhaust)
                     workers.submit { udpReceiveLoop(f, flowKey, srcIp, srcPort) }
+                } catch (e: Exception) {
+                    Log.w(TAG, "UDP socket create failed: $e")
                 }
             }
         }
         flow.lastUsed = System.currentTimeMillis()
 
+        // Forward đến real server
         try {
             val pkt = modified ?: udpData
             flow.socket?.send(DatagramPacket(pkt, pkt.size, InetAddress.getByName(dstIp), dstPort))
-        } catch (_: Exception) {}
+        } catch (e: Exception) {
+            Log.w(TAG, "UDP send failed: $e")
+            udpFlows.remove(flowKey)?.socket?.close()
+        }
     }
 
+    /** Thread riêng: đọc UDP response từ server → inject vào TUN về phía game. */
     private fun udpReceiveLoop(flow: UdpFlowState, flowKey: String, clientIp: String, clientPort: Int) {
         val buf = ByteArray(65535)
         val dp  = DatagramPacket(buf, buf.size)
-        while (running.get()) {
-            try {
-                flow.socket?.soTimeout = 60_000
-                flow.socket!!.receive(dp)
-                val data = buf.copyOf(dp.length)
-                val serverIp   = dp.address.hostAddress ?: continue
+        try {
+            while (running.get()) {
+                flow.socket?.receive(dp) ?: break
+                val n          = dp.length
+                val data       = buf.copyOf(n)
+                val serverIp   = dp.address?.hostAddress ?: continue
                 val serverPort = dp.port
 
                 // === ESP detection (inbound: server → game) ===
-                GameProtocolEngine.processUdp(flowKey, data, false)
-                val modified = PoseFreezeEngine.process(flowKey, data, false)
+                try { GameProtocolEngine.processUdp(flowKey, data, false) } catch (_: Exception) {}
+                val modified = try { PoseFreezeEngine.process(flowKey, data, false) } catch (_: Exception) { null }
                 val out = modified ?: data
 
-                // Inject về TUN về phía game client
+                // Inject về TUN
                 writeTun(buildUdpPkt(serverIp, serverPort, clientIp, clientPort, out))
                 flow.lastUsed = System.currentTimeMillis()
-
-            } catch (e: SocketTimeoutException) { break }
-            catch (e: Exception) { break }
+            }
+        } catch (e: SocketTimeoutException) {
+            Log.d(TAG, "UDP flow $flowKey timeout")
+        } catch (e: Exception) {
+            if (running.get()) Log.d(TAG, "UDP receive error $flowKey: ${e.message}")
+        } finally {
+            udpFlows.remove(flowKey)
+            flow.socket?.close()
         }
-        flow.socket?.close()
     }
 
     // ─── Synchronized TUN write ───────────────────────────────
@@ -278,7 +322,7 @@ class PacketTunnelEngine(
         }
     }
 
-    // ─── Build IP+TCP packet ──────────────────────────────────
+    // ─── Build IP+TCP ─────────────────────────────────────────
 
     private fun buildTcpPkt(
         srcIp: String, srcPort: Int,
@@ -294,7 +338,9 @@ class PacketTunnelEngine(
         // IP header
         pkt[0] = 0x45.toByte()
         writeU16(pkt, 2, ipLen)
-        pkt[6] = 0x40.toByte()  // Don't fragment
+        pkt[4] = (System.nanoTime() ushr 8).toByte()   // random ID
+        pkt[5] = System.nanoTime().toByte()
+        pkt[6] = 0x40.toByte()  // DF
         pkt[8] = 64             // TTL
         pkt[9] = 6              // TCP
         writeIPBytes(pkt, 12, srcIp)
@@ -304,12 +350,11 @@ class PacketTunnelEngine(
         // TCP header
         writeU16(pkt, 20, srcPort)
         writeU16(pkt, 22, dstPort)
-        writeU32(pkt, 24, seq and 0xFFFFFFFFL)
-        writeU32(pkt, 28, ack and 0xFFFFFFFFL)
-        pkt[32] = 0x50.toByte()   // data offset = 5 × 4 = 20
+        writeU32(pkt, 24, seq  and 0xFFFFFFFFL)
+        writeU32(pkt, 28, ack  and 0xFFFFFFFFL)
+        pkt[32] = 0x50.toByte()   // data offset = 5
         pkt[33] = (flags and 0xFF).toByte()
         writeU16(pkt, 34, win)
-        // urgent = 0
 
         if (data.isNotEmpty()) System.arraycopy(data, 0, pkt, 40, data.size)
 
@@ -317,7 +362,7 @@ class PacketTunnelEngine(
         return pkt
     }
 
-    // ─── Build IP+UDP packet ──────────────────────────────────
+    // ─── Build IP+UDP ─────────────────────────────────────────
 
     private fun buildUdpPkt(
         srcIp: String, srcPort: Int,
@@ -331,6 +376,8 @@ class PacketTunnelEngine(
         // IP
         pkt[0] = 0x45.toByte()
         writeU16(pkt, 2, ipLen)
+        pkt[4] = (System.nanoTime() ushr 8).toByte()
+        pkt[5] = System.nanoTime().toByte()
         pkt[6] = 0x40.toByte()
         pkt[8] = 64
         pkt[9] = 17  // UDP
@@ -342,7 +389,7 @@ class PacketTunnelEngine(
         writeU16(pkt, 20, srcPort)
         writeU16(pkt, 22, dstPort)
         writeU16(pkt, 24, udpLen)
-        writeU16(pkt, 26, 0)  // checksum = 0 (optional for IPv4 UDP)
+        // checksum = 0 (optional for IPv4 UDP)
         if (data.isNotEmpty()) System.arraycopy(data, 0, pkt, 28, data.size)
         return pkt
     }
@@ -350,66 +397,68 @@ class PacketTunnelEngine(
     // ─── Checksums ────────────────────────────────────────────
 
     private fun ipChecksum(pkt: ByteArray, ihl: Int): Int {
-        var sum = 0
+        var sum = 0L
         for (i in 0 until ihl step 2)
-            sum += ((pkt[i].toInt() and 0xFF) shl 8) or (pkt[i+1].toInt() and 0xFF)
-        while (sum shr 16 != 0) sum = (sum and 0xFFFF) + (sum shr 16)
-        return sum.inv() and 0xFFFF
+            sum += ((pkt[i].toInt() and 0xFF) shl 8) or (pkt[i + 1].toInt() and 0xFF)
+        while (sum shr 16 != 0L) sum = (sum and 0xFFFF) + (sum shr 16)
+        return (sum.inv() and 0xFFFF).toInt()
     }
 
     private fun tcpChecksum(pkt: ByteArray, tcpOff: Int, srcB: ByteArray, dstB: ByteArray, tcpLen: Int): Int {
-        var sum = 0
-        // Pseudo-header
+        var sum = 0L
         sum += ((srcB[0].toInt() and 0xFF) shl 8) or (srcB[1].toInt() and 0xFF)
         sum += ((srcB[2].toInt() and 0xFF) shl 8) or (srcB[3].toInt() and 0xFF)
         sum += ((dstB[0].toInt() and 0xFF) shl 8) or (dstB[1].toInt() and 0xFF)
         sum += ((dstB[2].toInt() and 0xFF) shl 8) or (dstB[3].toInt() and 0xFF)
         sum += 6; sum += tcpLen
-        // TCP header + data
         var i = tcpOff
         while (i + 1 < pkt.size) {
-            sum += ((pkt[i].toInt() and 0xFF) shl 8) or (pkt[i+1].toInt() and 0xFF); i += 2
+            sum += ((pkt[i].toInt() and 0xFF) shl 8) or (pkt[i + 1].toInt() and 0xFF); i += 2
         }
         if (i < pkt.size) sum += (pkt[i].toInt() and 0xFF) shl 8
-        while (sum shr 16 != 0) sum = (sum and 0xFFFF) + (sum shr 16)
-        return sum.inv() and 0xFFFF
+        while (sum shr 16 != 0L) sum = (sum and 0xFFFF) + (sum shr 16)
+        return (sum.inv() and 0xFFFF).toInt()
     }
 
     // ─── Cleanup ──────────────────────────────────────────────
 
     private fun cleanupFlows() {
         val now = System.currentTimeMillis()
-        udpFlows.entries.filter { now - it.value.lastUsed > 120_000 }.forEach { (k, v) ->
-            udpFlows.remove(k); v.socket?.close()
+        udpFlows.entries.removeIf { (_, v) ->
+            (now - v.lastUsed > FLOW_IDLE_MS).also { if (it) v.socket?.close() }
         }
-        tcpFlows.entries.filter { now - it.value.lastUsed > 300_000 }.forEach { (k, v) ->
-            tcpFlows.remove(k); v.socket?.close()
+        tcpFlows.entries.removeIf { (_, v) ->
+            (now - v.lastUsed > FLOW_IDLE_MS * 2).also { if (it) v.socket?.close() }
         }
     }
 
     // ─── Helpers ──────────────────────────────────────────────
 
-    private fun readU16(b: ByteArray, i: Int) = ((b[i].toInt() and 0xFF) shl 8) or (b[i+1].toInt() and 0xFF)
+    private fun readU16(b: ByteArray, i: Int) =
+        ((b[i].toInt() and 0xFF) shl 8) or (b[i + 1].toInt() and 0xFF)
     private fun readU32(b: ByteArray, i: Int) =
-        ((b[i].toLong() and 0xFF) shl 24) or ((b[i+1].toLong() and 0xFF) shl 16) or
-        ((b[i+2].toLong() and 0xFF) shl 8) or (b[i+3].toLong() and 0xFF)
-    private fun writeU16(b: ByteArray, i: Int, v: Int) { b[i] = (v shr 8).toByte(); b[i+1] = (v and 0xFF).toByte() }
+        ((b[i].toLong() and 0xFF) shl 24) or ((b[i + 1].toLong() and 0xFF) shl 16) or
+        ((b[i + 2].toLong() and 0xFF) shl 8) or (b[i + 3].toLong() and 0xFF)
+    private fun writeU16(b: ByteArray, i: Int, v: Int) {
+        b[i] = (v shr 8).toByte(); b[i + 1] = (v and 0xFF).toByte()
+    }
     private fun writeU32(b: ByteArray, i: Int, v: Long) {
-        b[i] = (v shr 24).toByte(); b[i+1] = (v shr 16).toByte()
-        b[i+2] = (v shr 8).toByte(); b[i+3] = v.toByte()
+        b[i]     = (v shr 24).toByte(); b[i + 1] = (v shr 16).toByte()
+        b[i + 2] = (v shr 8).toByte();  b[i + 3] = v.toByte()
     }
     private fun writeIPBytes(b: ByteArray, off: Int, ip: String) {
         ip.split(".").forEachIndexed { i, s -> b[off + i] = s.toInt().toByte() }
     }
-    private fun ipToBytes(ip: String): ByteArray = ip.split(".").map { it.toInt().toByte() }.toByteArray()
+    private fun ipToBytes(ip: String) = ip.split(".").map { it.toInt().toByte() }.toByteArray()
     private fun formatIP(b: ByteArray, off: Int) =
-        "${b[off].toInt() and 0xFF}.${b[off+1].toInt() and 0xFF}.${b[off+2].toInt() and 0xFF}.${b[off+3].toInt() and 0xFF}"
+        "${b[off].toInt() and 0xFF}.${b[off+1].toInt() and 0xFF}" +
+        ".${b[off+2].toInt() and 0xFF}.${b[off+3].toInt() and 0xFF}"
 
-    // ─── Flow state classes ───────────────────────────────────
+    // ─── Flow state ──────────────────────────────────────────
 
     inner class TcpFlowState(
-        val remoteIp: String, val remotePort: Int,
         val clientIp: String, val clientPort: Int,
+        val serverIp: String, val serverPort: Int,
         clientIsn: Long,
     ) {
         var socket: Socket? = null
@@ -420,7 +469,7 @@ class PacketTunnelEngine(
         @Volatile var lastUsed = System.currentTimeMillis()
     }
 
-    class UdpFlowState(val remoteIp: String, val remotePort: Int) {
+    class UdpFlowState {
         var socket: DatagramSocket? = null
         @Volatile var lastUsed = System.currentTimeMillis()
     }
