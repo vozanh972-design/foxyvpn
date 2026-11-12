@@ -248,7 +248,7 @@ private fun LocationCard(state: HomeUiState, onClick: () -> Unit) {
 }
 
 @Composable
-private fun SignalBars(level: Int) {
+internal fun SignalBars(level: Int) {
     Row(Modifier.height(14.dp), verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
         listOf(5.dp, 9.dp, 14.dp).forEachIndexed { i, h ->
             Box(Modifier.size(width = 3.dp, height = h).background(if (i < level) C.SignalOn else C.SignalOff, RoundedCornerShape(1.dp)))

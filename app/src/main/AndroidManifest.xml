@@ -6,9 +6,12 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <!-- Quyền VPN — bắt buộc để tạo TUN interface như Pigboy -->
     <uses-permission android:name="android.permission.BIND_VPN_SERVICE" />
-    <!-- Foreground service để VPN chạy ổn định trên Android 9+ -->
+    <!-- Foreground service để VPN & màn nổi chạy ổn định -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Quyền hiển thị màn nổi trên game -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <!-- Vibrate nhỏ khi kết nối thành công (optional) -->
     <uses-permission android:name="android.permission.VIBRATE" />
 
@@ -45,6 +48,15 @@
             <intent-filter>
                 <action android:name="android.net.VpnService" />
             </intent-filter>
+        </service>
+
+        <service
+            android:name=".ui.overlay.OverlayService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Hiển thị bảng thông tin VPN trên game" />
         </service>
 
     </application>

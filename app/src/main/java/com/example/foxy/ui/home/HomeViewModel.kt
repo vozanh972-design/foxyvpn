@@ -6,11 +6,13 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.net.VpnService
+import android.provider.Settings
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.foxy.data.Server
 import com.example.foxy.data.ServerRepository
+import com.example.foxy.ui.overlay.OverlayService
 import com.example.foxy.vpn.FreefireVpnService
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -32,6 +34,7 @@ data class HomeUiState(
     val downMbps: Double = 0.0,
     val upMbps: Double = 0.0,
     val needsVpnPermission: Boolean = false,
+    val needsOverlayPermission: Boolean = false,
     val serverName: String = "United States",
     val serverHint: String = "Nhanh nhất hiện tại",
     val serverCountryCode: String = "US",
@@ -39,15 +42,7 @@ data class HomeUiState(
 )
 
 /**
- * HomeViewModel — kết nối UI với FreefireVpnService.
- *
- * Logic VPN thực từ Pigboy (dựa trên class names đọc từ DEX):
- *   - REQ_VPN → VpnService.prepare() → xin quyền
- *   - startOrRestartTunnel → startService(ACTION_START)
- *   - stopTunnel → startService(ACTION_STOP)
- *   - Pigboy dùng ConnectivityManager để detect VPN đã up chưa
- *     (class: Landroid/net/ConnectivityManager; đã thấy trong strings DEX)
- *   - Sau khi VPN up → tự mở game (com.dts.freefireth.FFMainActivity)
+ * HomeViewModel — kết nối UI với FreefireVpnService và OverlayService.
  */
 class HomeViewModel(app: Application) : AndroidViewModel(app) {
 
@@ -57,9 +52,6 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
     private var elapsedJob: Job? = null
     private var connectTimeoutJob: Job? = null
 
-    // ─── BroadcastReceiver nhận state từ FreefireVpnService ─────────────────
-    // VpnService gửi broadcast với `package` = packageName (restricted)
-    // ConnectivityManager.NetworkCallback cũng detect VPN network
     private val vpnReceiver = object : BroadcastReceiver() {
         override fun onReceive(ctx: Context?, intent: Intent?) {
             if (intent?.action != FreefireVpnService.BROADCAST_STATE) return
@@ -67,11 +59,7 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
             connectTimeoutJob?.cancel()
             viewModelScope.launch {
                 if (connected && _state.value.status == ConnectionStatus.Connecting) {
-                    _state.update { it.copy(status = ConnectionStatus.Connected) }
-                    startElapsedTimer()
-                    startFakeStats()
-                    delay(300)
-                    launchFreeFire(getApplication())
+                    onVpnConnected()
                 } else if (!connected) {
                     onVpnStopped()
                 }
@@ -80,7 +68,6 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     init {
-        // Đăng ký BroadcastReceiver nhận state từ FreefireVpnService
         val filter = android.content.IntentFilter(FreefireVpnService.BROADCAST_STATE)
         ContextCompat.registerReceiver(
             app,
@@ -94,9 +81,23 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
 
     fun onPowerClick() {
         when (_state.value.status) {
-            ConnectionStatus.Idle -> requestConnect()
+            ConnectionStatus.Idle -> requestConnectWithOverlay()
             ConnectionStatus.Connecting, ConnectionStatus.Connected -> requestDisconnect()
         }
+    }
+
+    private fun requestConnectWithOverlay() {
+        val ctx = getApplication<Application>()
+        if (!Settings.canDrawOverlays(ctx)) {
+            _state.update { it.copy(needsOverlayPermission = true) }
+        } else {
+            requestConnect()
+        }
+    }
+
+    fun onOverlayPermissionResult(granted: Boolean) {
+        _state.update { it.copy(needsOverlayPermission = false) }
+        if (granted) requestConnect()
     }
 
     fun requestConnect() {
@@ -118,7 +119,7 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
         _state.update { it.copy(needsVpnPermission = false) }
     }
 
-    // ─── Start VPN Service ─────────────────────────────────────────────────────
+    // ─── Start / Stop VPN + Overlay ────────────────────────────────────────────
 
     private fun startVpnService() {
         val ctx = getApplication<Application>()
@@ -133,39 +134,43 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
             )
         }
 
-        // Gửi Intent START giống Pigboy gọi startOrRestartTunnel()
         val intent = Intent(ctx, FreefireVpnService::class.java).apply {
             action = FreefireVpnService.ACTION_START
         }
         ContextCompat.startForegroundService(ctx, intent)
 
-        // Fallback timeout: nếu ConnectivityManager callback không fire sau 6s
-        // (VPN chậm khởi động hoặc device cũ không fire callback ngay)
-        // thì coi như đã kết nối — tương tự cách Pigboy delay trước khi mở game
         connectTimeoutJob?.cancel()
         connectTimeoutJob = viewModelScope.launch {
             delay(6000)
             if (_state.value.status == ConnectionStatus.Connecting) {
-                _state.update { it.copy(status = ConnectionStatus.Connected) }
-                startElapsedTimer()
-                startFakeStats()
-                delay(300)
-                launchFreeFire(ctx)
+                onVpnConnected()
             }
         }
     }
 
+    private suspend fun onVpnConnected() {
+        val ctx = getApplication<Application>()
+        _state.update { it.copy(status = ConnectionStatus.Connected) }
+        syncOverlayState()
+        OverlayService.start(ctx)
+        startElapsedTimer()
+        startFakeStats()
+        delay(300)
+        launchFreeFire(ctx)
+    }
+
     private fun requestDisconnect() {
         val ctx = getApplication<Application>()
-        // Gửi Intent STOP giống Pigboy gọi stopTunnel()
-        val intent = Intent(ctx, FreefireVpnService::class.java).apply {
-            action = FreefireVpnService.ACTION_STOP
-        }
-        ctx.startService(intent)
+        ctx.startService(
+            Intent(ctx, FreefireVpnService::class.java).apply {
+                action = FreefireVpnService.ACTION_STOP
+            }
+        )
         onVpnStopped()
     }
 
     private fun onVpnStopped() {
+        OverlayService.stop(getApplication())
         connectTimeoutJob?.cancel()
         elapsedJob?.cancel()
         elapsedJob = null
@@ -228,14 +233,35 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
             while (true) {
                 delay(1000)
                 if (_state.value.status == ConnectionStatus.Connected) {
-                    _state.update {
-                        it.copy(
-                            downMbps = Random.nextDouble(60.0, 110.0),
-                            upMbps   = Random.nextDouble(20.0, 50.0),
+                    val down = Random.nextDouble(60.0, 110.0)
+                    val up = Random.nextDouble(20.0, 50.0)
+                    _state.update { it.copy(downMbps = down, upMbps = up) }
+                    val basePing = _state.value.current?.pingMs ?: 38
+                    val nextPing = (basePing + Random.nextInt(-5, 6)).coerceAtLeast(12)
+                    OverlayService.stateFlow.update { ov ->
+                        ov.copy(
+                            downloadMbps = down.toFloat(),
+                            uploadMbps = up.toFloat(),
+                            pingMs = nextPing,
+                            pingHistory = (ov.pingHistory.drop(1) + nextPing),
                         )
                     }
                 }
             }
+        }
+    }
+
+    private fun syncOverlayState() {
+        val s = _state.value
+        val ping = s.current?.pingMs ?: 38
+        OverlayService.stateFlow.update {
+            it.copy(
+                serverName = s.serverName,
+                serverCountryCode = s.serverCountryCode,
+                pingMs = ping,
+                downloadMbps = s.downMbps.toFloat(),
+                uploadMbps = s.upMbps.toFloat(),
+            )
         }
     }
 

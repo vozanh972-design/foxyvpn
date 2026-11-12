@@ -1,9 +1,12 @@
 package com.example.foxy
 
 import android.app.Activity
+import android.content.Intent
 import android.graphics.Color as AndroidColor
+import android.net.Uri
 import android.net.VpnService
 import android.os.Bundle
+import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
@@ -35,6 +38,12 @@ import com.example.foxy.ui.theme.VeilTheme
 class MainActivity : ComponentActivity() {
 
     private lateinit var homeViewModel: HomeViewModel
+
+    private val overlayPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) {
+        homeViewModel.onOverlayPermissionResult(Settings.canDrawOverlays(this))
+    }
 
     private val vpnPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -85,6 +94,21 @@ class MainActivity : ComponentActivity() {
 
                                     val homeState by vm.state.collectAsState()
                                     var showPicker by remember { mutableStateOf(false) }
+
+                                    LaunchedEffect(homeState.needsOverlayPermission) {
+                                        if (homeState.needsOverlayPermission) {
+                                            if (!Settings.canDrawOverlays(context)) {
+                                                overlayPermissionLauncher.launch(
+                                                    Intent(
+                                                        Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                                                        Uri.parse("package:${context.packageName}"),
+                                                    )
+                                                )
+                                            } else {
+                                                vm.onOverlayPermissionResult(true)
+                                            }
+                                        }
+                                    }
 
                                     LaunchedEffect(homeState.needsVpnPermission) {
                                         if (homeState.needsVpnPermission) {
