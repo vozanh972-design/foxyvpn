@@ -128,6 +128,7 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner, ViewM
                         onTabSelected = { tab = it },
                         boost = boost,
                         onBoostChange = { boost = it },
+                        onEagleEyeChange = { checked -> stateFlow.update { it.copy(eagleEyeEnabled = checked) } },
                         panelScale = panelScale,
                     )
                 }

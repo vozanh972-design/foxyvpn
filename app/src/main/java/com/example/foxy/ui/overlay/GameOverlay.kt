@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -26,6 +27,7 @@ import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Home
+import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material.icons.rounded.PowerSettingsNew
 import androidx.compose.material.icons.rounded.Public
 import androidx.compose.material.icons.rounded.Remove
@@ -37,6 +39,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
@@ -72,8 +75,8 @@ private val HeroInk = Color(0xFF10282B)
 private val HeroInkSoft = Color(0xFF12423B)
 
 data class GameOverlayState(
-    val serverName: String = "United States",
-    val serverCountryCode: String = "US",
+    val serverName: String = "Free Fire",
+    val serverCountryCode: String = "FF",
     val signalLevel: Int = 3,
     val pingMs: Int = 38,
     val pingHistory: List<Int> = listOf(41, 37, 45, 33, 39, 31, 36, 34, 38),
@@ -81,13 +84,14 @@ data class GameOverlayState(
     val downloadMbps: Float = 13.5f,
     val uploadMbps: Float = 15.5f,
     val gamePriority: Boolean = true,
+    val eagleEyeEnabled: Boolean = true,
     val languageLabel: String = "Tiếng Việt",
 )
 
 enum class OverlayTab(val icon: ImageVector, val label: String) {
     Home(Icons.Rounded.Home, "Trang chủ"),
     Boost(Icons.Rounded.Bolt, "Tăng tốc"),
-    Servers(Icons.Rounded.Public, "Máy chủ"),
+    Servers(Icons.Rounded.Public, "Mắt thần"),
     Security(Icons.Rounded.VerifiedUser, "Bảo mật"),
     Settings(Icons.Rounded.Settings, "Cài đặt"),
 }
@@ -111,6 +115,7 @@ fun GameOverlay(
     onTabSelected: (OverlayTab) -> Unit = {},
     boost: BoostState = BoostState(),
     onBoostChange: (BoostState) -> Unit = {},
+    onEagleEyeChange: (Boolean) -> Unit = {},
     modifier: Modifier = Modifier,
     panelScale: Float = PANEL_SCALE,
 ) {
@@ -141,6 +146,7 @@ fun GameOverlay(
                 when (tab) {
                     OverlayTab.Home -> HomeContent(state, onDisconnect, onPriorityChange, onServerClick, onLanguageClick, content)
                     OverlayTab.Boost -> BoostContent(boost, onBoostChange, content)
+                    OverlayTab.Servers -> EagleEyeContent(state.eagleEyeEnabled, onEagleEyeChange, content)
                     else -> Box(content, contentAlignment = Alignment.Center) {
                         Text("${tab.label} · sắp có", color = Soft, fontSize = 14.sp)
                     }
@@ -352,9 +358,41 @@ private fun ServerCard(state: GameOverlayState, onClick: () -> Unit) {
         CountryFlag(state.serverCountryCode, 36.dp)
         Column(Modifier.weight(1f)) {
             Text(state.serverName, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text("Đổi máy chủ", color = Soft, fontSize = 12.sp)
+            Text("Tự động", color = Soft, fontSize = 12.sp)
         }
         SignalBars(level = state.signalLevel)
+    }
+}
+
+@Composable
+private fun EagleEyeContent(enabled: Boolean, onToggle: (Boolean) -> Unit, modifier: Modifier = Modifier) {
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Row(
+            Modifier.fillMaxWidth().height(54.dp).clip(RoundedCornerShape(18.dp)).background(CardBg)
+                .toggleable(value = enabled, role = Role.Switch, onValueChange = onToggle)
+                .padding(horizontal = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Text("Mắt thần", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+            Box(
+                Modifier.size(40.dp, 22.dp).clip(RoundedCornerShape(11.dp))
+                    .background(if (enabled) VeilColors.Accent else Color.White.copy(alpha = 0.18f)).padding(2.5.dp),
+                contentAlignment = if (enabled) Alignment.CenterEnd else Alignment.CenterStart,
+            ) { Box(Modifier.size(17.dp).background(Color.White, CircleShape)) }
+        }
+        Box(
+            Modifier.weight(1f).fillMaxWidth().clip(RoundedCornerShape(18.dp))
+                .background(if (enabled) CardBg else Color.White.copy(alpha = 0.04f))
+                .border(1.dp, Color.White.copy(alpha = if (enabled) 0.10f else 0.04f), RoundedCornerShape(18.dp))
+                .alpha(if (enabled) 1f else 0.45f),
+            contentAlignment = Alignment.Center,
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Icon(Icons.Rounded.Image, null, Modifier.size(34.dp), tint = Soft.copy(alpha = 0.7f))
+                Text("Chưa có ảnh", color = Soft.copy(alpha = 0.75f), fontSize = 12.sp)
+            }
+        }
     }
 }
 

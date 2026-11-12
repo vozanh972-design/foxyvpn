@@ -25,9 +25,20 @@ import kotlin.random.Random
 
 enum class ConnectionStatus { Idle, Connecting, Connected }
 
+enum class GameOption(
+    val displayName: String,
+    val packageName: String,
+    val activityName: String,
+    val code: String,
+) {
+    FreeFire("Free Fire", "com.dts.freefireth", "com.dts.freefireth.FFMainActivity", "FF"),
+    FreeFireMax("Free Fire Max", "com.dts.freefiremax", "com.dts.freefiremax.FFMainActivity", "FFMAX"),
+}
+
 data class HomeUiState(
     val status: ConnectionStatus = ConnectionStatus.Idle,
     val isAuto: Boolean = true,
+    val selectedGame: GameOption = GameOption.FreeFire,
     val selected: Server? = null,
     val current: Server? = null,
     val elapsedSeconds: Long = 0,
@@ -35,9 +46,9 @@ data class HomeUiState(
     val upMbps: Double = 0.0,
     val needsVpnPermission: Boolean = false,
     val needsOverlayPermission: Boolean = false,
-    val serverName: String = "United States",
-    val serverHint: String = "Nhanh nhất hiện tại",
-    val serverCountryCode: String = "US",
+    val serverName: String = GameOption.FreeFire.displayName,
+    val serverHint: String = "Tự động",
+    val serverCountryCode: String = GameOption.FreeFire.code,
     val ipAddress: String = "254.759.36.54",
 )
 
@@ -186,22 +197,19 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    // ─── Mở Free Fire (giống Pigboy tự động launch game) ──────────────────────
+    // ─── Mở game đang chọn (Free Fire / Free Fire Max) ───────────────────────
 
     private fun launchFreeFire(ctx: Context) {
+        val game = _state.value.selectedGame
         try {
             val intent = Intent().apply {
-                component = ComponentName(
-                    "com.dts.freefireth",
-                    "com.dts.freefireth.FFMainActivity",
-                )
+                component = ComponentName(game.packageName, game.activityName)
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
             ctx.startActivity(intent)
         } catch (_: Exception) {
             try {
-                val fallback = ctx.packageManager
-                    .getLaunchIntentForPackage("com.dts.freefireth")
+                val fallback = ctx.packageManager.getLaunchIntentForPackage(game.packageName)
                 if (fallback != null) {
                     fallback.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     ctx.startActivity(fallback)
@@ -210,7 +218,19 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    // ─── Chọn server ──────────────────────────────────────────────────────────
+    // ─── Chọn game & server ───────────────────────────────────────────────────
+
+    fun selectGame(game: GameOption) {
+        _state.update {
+            it.copy(
+                selectedGame = game,
+                serverName = game.displayName,
+                serverHint = "Tự động",
+                serverCountryCode = game.code,
+            )
+        }
+        syncOverlayState()
+    }
 
     fun selectServer(server: Server?) {
         val wasActive = _state.value.status != ConnectionStatus.Idle
@@ -281,9 +301,9 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
         ServerRepository.far.filter { it != previous }.random()
 
     private fun HomeUiState.withServerDisplay(server: Server?): HomeUiState = copy(
-        serverName = server?.country ?: "United States",
-        serverHint = server?.city ?: "Nhanh nhất hiện tại",
-        serverCountryCode = server?.let { COUNTRY_CODES[it.country] ?: "US" } ?: "US",
+        serverName = selectedGame.displayName,
+        serverHint = "Tự động",
+        serverCountryCode = selectedGame.code,
     )
 
     override fun onCleared() {

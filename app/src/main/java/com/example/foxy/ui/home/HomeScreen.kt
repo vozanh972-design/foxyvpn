@@ -43,6 +43,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
@@ -265,6 +266,29 @@ fun CountryFlag(code: String, size: Dp) {
         fun rect(c: Color, x: Float, y: Float, w: Float, h: Float) =
             drawRect(c, Offset(x * u, y * u), Size(w * u, h * u))
         when (code) {
+            "FF", "FFMAX" -> {
+                rect(Color(0xFF1A1D24), 0f, 0f, 36f, 36f)
+                // Ngọn lửa cam-vàng đặc trưng Free Fire
+                val flame = Path().apply {
+                    moveTo(23f * u, 6f * u)
+                    lineTo(27.5f * u, 13f * u)
+                    lineTo(24f * u, 15.5f * u)
+                    lineTo(26f * u, 20f * u)
+                    lineTo(20f * u, 14.5f * u)
+                    close()
+                }
+                drawPath(flame, Color(0xFFFF7A00))
+                // Hai chữ F sắc cạnh màu trắng
+                rect(Color.White, 8.5f, 11f, 3.2f, 15f)
+                rect(Color.White, 8.5f, 11f, 8.5f, 3.2f)
+                rect(Color.White, 8.5f, 16.5f, 6.5f, 2.8f)
+                rect(Color.White, 19.5f, 11f, 3.2f, 15f)
+                rect(Color.White, 19.5f, 11f, 8.5f, 3.2f)
+                rect(Color.White, 19.5f, 16.5f, 6.5f, 2.8f)
+                if (code == "FFMAX") {
+                    drawCircle(Color(0xFFFFB300), 3.2f * u, Offset(28.5f * u, 28f * u))
+                }
+            }
             "US" -> {
                 rect(Color.White, 0f, 0f, 36f, 36f)
                 listOf(0f, 9.2f, 18.4f, 27.6f).forEach { rect(red, 0f, it, 36f, 4.6f) }
