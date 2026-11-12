@@ -273,6 +273,7 @@ fun CountryFlag(code: String, size: Dp) {
             "DE" -> { rect(Color(0xFF2B2B2B), 0f, 0f, 36f, 12f); rect(red, 0f, 12f, 36f, 12f); rect(Color(0xFFE8B84A), 0f, 24f, 36f, 12f) }
             "FR" -> { rect(blue, 0f, 0f, 12f, 36f); rect(Color.White, 12f, 0f, 12f, 36f); rect(red, 24f, 0f, 12f, 36f) }
             "JP" -> { rect(Color.White, 0f, 0f, 36f, 36f); drawCircle(red, 8f * u, Offset(18f * u, 18f * u)) }
+            "SG" -> { rect(red, 0f, 0f, 36f, 18f); rect(Color.White, 0f, 18f, 36f, 18f); drawCircle(Color.White, 4f * u, Offset(10f * u, 9f * u)) }
             else -> rect(C.AccentTint, 0f, 0f, 36f, 36f)
         }
     }

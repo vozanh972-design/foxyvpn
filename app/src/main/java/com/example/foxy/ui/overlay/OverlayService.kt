@@ -40,10 +40,17 @@ import androidx.savedstate.SavedStateRegistryOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import com.example.foxy.ui.theme.VeilTheme
 import com.example.foxy.vpn.FreefireVpnService
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 import kotlin.math.ceil
 import kotlin.math.hypot
+import kotlin.random.Random
 
 /**
  * Service hiển thị GameOverlay nổi trên game (cần quyền "Hiển thị trên ứng dụng khác").
@@ -61,6 +68,9 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner, ViewM
     private var overlayView: FrameLayout? = null
     private var expanded by mutableStateOf(false)
     private var panelScale by mutableFloatStateOf(PANEL_SCALE)
+    private var tab by mutableStateOf(OverlayTab.Home)
+    private var boost by mutableStateOf(BoostState())
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
     // Lưu vị trí riêng cho chip thu gọn và bảng mở rộng (tính từ góc trên trái).
     private var chipX = 0
@@ -122,6 +132,11 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner, ViewM
                         onPriorityChange = { checked -> stateFlow.update { it.copy(gamePriority = checked) } },
                         onServerClick = { /* TODO: mở màn chọn máy chủ */ },
                         onLanguageClick = { /* TODO: đổi ngôn ngữ */ },
+                        tab = tab,
+                        onTabSelected = { tab = it },
+                        boost = boost,
+                        onBoostChange = { boost = it },
+                        onMeasure = ::measureLatency,
                         panelScale = panelScale,
                     )
                 }
@@ -264,6 +279,19 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner, ViewM
         }
     }
 
+    /** Đo lại độ trễ các máy chủ. Hiện chỉ giả lập, thay bằng phép đo TCP/HTTPS thật khi nối tunnel. */
+    private fun measureLatency() {
+        if (boost.measuring) return
+        boost = boost.copy(measuring = true)
+        scope.launch {
+            delay(1_200)
+            boost = boost.copy(
+                measuring = false,
+                servers = boost.servers.map { it.copy(pingMs = (it.pingMs + Random.nextInt(-6, 7)).coerceAtLeast(10)) },
+            )
+        }
+    }
+
     private fun startAsForeground() {
         val channelId = "veil_overlay"
         val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
@@ -287,6 +315,7 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner, ViewM
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onDestroy() {
+        scope.cancel()
         if (::windowManager.isInitialized) {
             overlayView?.let { windowManager.removeView(it) }
         }
