@@ -11,52 +11,38 @@ import android.os.ParcelFileDescriptor
 import android.util.Log
 import com.example.foxy.MainActivity
 import com.example.foxy.R
+import com.example.foxy.engine.GameProtocolEngine
+import com.example.foxy.engine.PacketTunnelEngine
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import java.io.FileInputStream
+import java.io.FileOutputStream
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * FreefireVpnService — dựa đúng logic từ Pigboy DEX (classes2.dex):
- *
- * Từ DEX thực đọc được:
- *   class A1 { startOrRestartTunnel(), stopTunnel() }   ← wrapper
- *   class PacketTunnelEngine {                           ← engine chính
- *       TcpFlow, UdpFlow, FragmentBuffer, TcpSegment
- *   }
- *   class FirewallRules { blocksDomain(), blocksIp(), denyDns(), learn(), observeDns() }
- *
- * Logic thực của Pigboy:
- *   1. VpnService.Builder.establish() → tạo TUN interface (Android tự route)
- *   2. FirewallRules — block domain/IP qua DNS monitoring
- *   3. PacketTunnelEngine quản lý TCP/UDP flows cho firewall
- *   4. KHÔNG forward gói thủ công — Android OS tự làm khi TUN up
- *
- * Cái tôi implement đúng theo đó:
- *   - establish() TUN interface
- *   - Foreground notification (bắt buộc Android 8+)
- *   - Broadcast state về MainActivity
+ * FreefireVpnService — VPN service tích hợp PacketTunnelEngine.
+ * ESP detection chạy trong tunnel (GameProtocolEngine).
+ * Freeze/Ghim rewrite position packet (PoseFreezeEngine).
  */
 class FreefireVpnService : VpnService() {
 
     companion object {
-        private const val TAG = "FreefireVPN"
-        const val ACTION_START = "com.example.foxy.vpn.START"
-        const val ACTION_STOP  = "com.example.foxy.vpn.STOP"
-
+        private const val TAG          = "FreefireVPN"
+        const val ACTION_START         = "com.example.foxy.vpn.START"
+        const val ACTION_STOP          = "com.example.foxy.vpn.STOP"
         private const val CHANNEL_ID   = "foxy_vpn_channel"
         private const val NOTIF_ID     = 1001
 
-        // TUN interface config
+        // TUN config
         private const val VPN_ADDRESS  = "10.8.0.2"
-        private const val VPN_GATEWAY  = "10.8.0.1"
         private const val VPN_DNS      = "8.8.8.8"
         private const val VPN_DNS2     = "8.8.4.4"
         private const val MTU          = 1500
 
-        // Broadcast — gửi về ViewModel
+        // Broadcast
         const val BROADCAST_STATE  = "com.example.foxy.vpn.STATE"
         const val EXTRA_CONNECTED  = "connected"
     }
@@ -64,6 +50,7 @@ class FreefireVpnService : VpnService() {
     private var tunInterface: ParcelFileDescriptor? = null
     private val running = AtomicBoolean(false)
     private val scope   = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private var tunnelEngine: PacketTunnelEngine? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         return when (intent?.action) {
@@ -72,113 +59,106 @@ class FreefireVpnService : VpnService() {
         }
     }
 
-    // ─── FOREGROUND NOTIFICATION (bắt buộc, giống Pigboy) ─────────────────────
-
-    private fun showNotification() {
-        // Tạo channel (Android 8+)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val ch = NotificationChannel(
-                CHANNEL_ID,
-                "Free Fire VPN",
-                NotificationManager.IMPORTANCE_LOW,
-            ).apply { description = "VPN đang hoạt động" }
-            getSystemService(NotificationManager::class.java)?.createNotificationChannel(ch)
-        }
-
-        val openIntent = PendingIntent.getActivity(
-            this, 0,
-            Intent(this, MainActivity::class.java),
-            PendingIntent.FLAG_IMMUTABLE,
-        )
-
-        val notif = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            Notification.Builder(this, CHANNEL_ID)
-                .setContentTitle("Free Fire VPN")
-                .setContentText("🔥 Đang bảo vệ kết nối Free Fire")
-                .setSmallIcon(android.R.drawable.ic_dialog_info)
-                .setContentIntent(openIntent)
-                .setOngoing(true)
-                .build()
-        } else {
-            @Suppress("DEPRECATION")
-            Notification.Builder(this)
-                .setContentTitle("Free Fire VPN")
-                .setContentText("🔥 Đang bảo vệ kết nối Free Fire")
-                .setSmallIcon(android.R.drawable.ic_dialog_info)
-                .setContentIntent(openIntent)
-                .setOngoing(true)
-                .build()
-        }
-
-        startForeground(NOTIF_ID, notif)
-    }
-
-    // ─── START VPN — theo đúng Pigboy startOrRestartTunnel() ──────────────────
-
     private fun startVpn() {
         if (running.getAndSet(true)) return
-        Log.i(TAG, "startOrRestartTunnel()")
-
-        // 1. Foreground notification trước (bắt buộc Android 9+)
+        Log.i(TAG, "Starting VPN + Tunnel Engine")
         showNotification()
 
         scope.launch {
             try {
-                // 2. Tạo TUN interface — giống Pigboy PacketTunnelEngine.establish()
+                // 1. Build TUN interface
                 val builder = Builder()
-                    .setSession("Free Fire VPN")
+                    .setSession("Foxy VPN")
                     .addAddress(VPN_ADDRESS, 24)
                     .addRoute("0.0.0.0", 0)
                     .addDnsServer(VPN_DNS)
                     .addDnsServer(VPN_DNS2)
                     .setMtu(MTU)
-                    .setBlocking(false)
+                    .setBlocking(true)   // Blocking mode cho tunnel engine
 
-                // Bypass chính game Free Fire khỏi VPN loop (Pigboy làm điều này)
+                // Bypass game process khỏi VPN loop (tránh vòng lặp)
                 try { builder.addDisallowedApplication("com.dts.freefireth") } catch (_: Exception) {}
+                try { builder.addDisallowedApplication("com.dts.freefiremax") } catch (_: Exception) {}
 
-                tunInterface = builder.establish()
-                Log.i(TAG, "TUN established: fd=${tunInterface?.fd}")
+                val tun = builder.establish() ?: run {
+                    Log.e(TAG, "establish() returned null")
+                    running.set(false)
+                    broadcastState(false)
+                    return@launch
+                }
+                tunInterface = tun
 
-                // 3. Broadcast Connected về ViewModel
-                broadcastState(connected = true)
+                // 2. Reset engine state
+                GameProtocolEngine.reset()
+
+                // 3. Khởi động PacketTunnelEngine
+                val engine = PacketTunnelEngine(
+                    vpn   = this@FreefireVpnService,
+                    tunIn = FileInputStream(tun.fileDescriptor),
+                    tunOut= FileOutputStream(tun.fileDescriptor),
+                )
+                tunnelEngine = engine
+
+                broadcastState(true)
+                Log.i(TAG, "TUN fd=${tun.fd} — Tunnel Engine running")
+
+                // 4. Chạy tunnel loop (blocking)
+                engine.start()
 
             } catch (e: Exception) {
                 Log.e(TAG, "startVpn error: $e")
                 running.set(false)
-                broadcastState(connected = false)
+                broadcastState(false)
             }
         }
     }
 
-    // ─── STOP VPN — theo đúng Pigboy stopTunnel() ─────────────────────────────
-
     private fun stopVpn() {
-        Log.i(TAG, "stopTunnel()")
+        Log.i(TAG, "Stopping VPN")
         running.set(false)
+        tunnelEngine?.stop()
+        tunnelEngine = null
         tunInterface?.close()
         tunInterface = null
-        broadcastState(connected = false)
+        GameProtocolEngine.reset()
+        broadcastState(false)
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
     }
 
-    override fun onDestroy() {
-        super.onDestroy()
-        stopVpn()
-        scope.cancel()
+    private fun showNotification() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val ch = NotificationChannel(CHANNEL_ID, "Foxy VPN", NotificationManager.IMPORTANCE_LOW)
+                .apply { description = "VPN + ESP đang hoạt động" }
+            getSystemService(NotificationManager::class.java)?.createNotificationChannel(ch)
+        }
+        val openIntent = PendingIntent.getActivity(
+            this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE
+        )
+        val notif = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            Notification.Builder(this, CHANNEL_ID)
+                .setContentTitle("Foxy VPN đang chạy")
+                .setContentText("Mắt thần đang theo dõi")
+                .setSmallIcon(android.R.drawable.ic_dialog_info)
+                .setContentIntent(openIntent).setOngoing(true).build()
+        } else {
+            @Suppress("DEPRECATION")
+            Notification.Builder(this)
+                .setContentTitle("Foxy VPN đang chạy")
+                .setContentText("Mắt thần đang theo dõi")
+                .setSmallIcon(android.R.drawable.ic_dialog_info)
+                .setContentIntent(openIntent).setOngoing(true).build()
+        }
+        startForeground(NOTIF_ID, notif)
     }
-
-    override fun onRevoke() {
-        stopVpn()
-    }
-
-    // ─── Broadcast state về ViewModel ─────────────────────────────────────────
 
     private fun broadcastState(connected: Boolean) {
         sendBroadcast(Intent(BROADCAST_STATE).apply {
-            `package` = packageName  // restricted broadcast — chỉ trong app
+            `package` = packageName
             putExtra(EXTRA_CONNECTED, connected)
         })
     }
+
+    override fun onRevoke()  { stopVpn() }
+    override fun onDestroy() { super.onDestroy(); stopVpn(); scope.cancel() }
 }

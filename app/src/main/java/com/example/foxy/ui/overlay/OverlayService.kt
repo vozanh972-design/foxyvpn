@@ -38,6 +38,8 @@ import androidx.savedstate.SavedStateRegistry
 import androidx.savedstate.SavedStateRegistryController
 import androidx.savedstate.SavedStateRegistryOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
+import com.example.foxy.engine.EspHudView
+import com.example.foxy.engine.FreezeController
 import com.example.foxy.ui.theme.VeilTheme
 import com.example.foxy.vpn.FreefireVpnService
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -46,48 +48,47 @@ import kotlin.math.ceil
 import kotlin.math.hypot
 
 /**
- * Service hiển thị GameOverlay nổi trên game (cần quyền "Hiển thị trên ứng dụng khác").
+ * OverlayService — Hiển thị GameOverlay + EspHudView nổi trên game.
+ *
+ * Mắt thần toggle → bật/tắt EspHudView
+ * Ghim (Boost tab) → FreezeController.setManualFreeze()
  */
 class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner, ViewModelStoreOwner {
 
-    private val lifecycleRegistry = LifecycleRegistry(this)
+    private val lifecycleRegistry    = LifecycleRegistry(this)
     private val savedStateController = SavedStateRegistryController.create(this)
-    private val store = ViewModelStore()
-    override val lifecycle: Lifecycle get() = lifecycleRegistry
+    private val store                = ViewModelStore()
+    override val lifecycle:          Lifecycle          get() = lifecycleRegistry
     override val savedStateRegistry: SavedStateRegistry get() = savedStateController.savedStateRegistry
-    override val viewModelStore: ViewModelStore get() = store
+    override val viewModelStore:     ViewModelStore     get() = store
 
     private lateinit var windowManager: WindowManager
     private var overlayView: FrameLayout? = null
-    private var expanded by mutableStateOf(false)
-    private var panelScale by mutableFloatStateOf(PANEL_SCALE)
-    private var widthScale by mutableFloatStateOf(1f)
-    private var heightScale by mutableFloatStateOf(1f)
-    private var tab by mutableStateOf(OverlayTab.Home)
-    private var boost by mutableStateOf(BoostState())
+    private var espHudView:  EspHudView?  = null    // ← NEW: ESP overlay
 
-    // Lưu vị trí riêng cho chip thu gọn và bảng mở rộng (tính từ góc trên trái).
-    private var chipX = 0
-    private var chipY = 0
-    private var panelX = -1
-    private var panelY = -1
+    private var expanded    by mutableStateOf(false)
+    private var panelScale  by mutableFloatStateOf(PANEL_SCALE)
+    private var widthScale  by mutableFloatStateOf(1f)
+    private var heightScale by mutableFloatStateOf(1f)
+    private var tab         by mutableStateOf(OverlayTab.Home)
+    private var boost       by mutableStateOf(BoostState())
+
+    private var chipX = 0; private var chipY = 0
+    private var panelX = -1; private var panelY = -1
 
     private val params by lazy {
         val d = resources.displayMetrics.density
-        chipX = (14 * d).toInt()
-        chipY = (10 * d).toInt()
+        chipX = (14 * d).toInt(); chipY = (10 * d).toInt()
         WindowManager.LayoutParams(
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
             PixelFormat.TRANSLUCENT,
-        ).apply {
-            gravity = Gravity.TOP or Gravity.START
-            x = chipX
-            y = chipY
-        }
+        ).apply { gravity = Gravity.TOP or Gravity.START; x = chipX; y = chipY }
     }
+
+    // ─── Lifecycle ────────────────────────────────────────────
 
     override fun onCreate() {
         super.onCreate()
@@ -95,14 +96,40 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner, ViewM
         savedStateController.performRestore(null)
         lifecycleRegistry.currentState = Lifecycle.State.CREATED
         startAsForeground()
-        if (!Settings.canDrawOverlays(this)) {
-            stopSelf()
-            return
-        }
+        if (!Settings.canDrawOverlays(this)) { stopSelf(); return }
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
+
+        // 1. Add full-screen ESP HUD (phía dưới overlay)
+        addEspHud()
+
+        // 2. Add game overlay menu
         showOverlay()
+
         lifecycleRegistry.currentState = Lifecycle.State.RESUMED
     }
+
+    // ─── ESP HUD View ─────────────────────────────────────────
+
+    private fun addEspHud() {
+        val hud = EspHudView(this)
+        // Lấy state hiện tại
+        hud.espEnabled    = stateFlow.value.eagleEyeEnabled
+        hud.smoothEnabled = true
+
+        val espParams = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or   // Không chặn touch
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+            PixelFormat.TRANSLUCENT,
+        )
+        windowManager.addView(hud, espParams)
+        espHudView = hud
+    }
+
+    // ─── Overlay menu (Compose) ───────────────────────────────
 
     private fun showOverlay() {
         val compose = ComposeView(this).apply {
@@ -111,30 +138,37 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner, ViewM
                 val state by stateFlow.collectAsState()
                 VeilTheme {
                     GameOverlay(
-                        state = state,
-                        expanded = expanded,
-                        onExpandedChange = ::updateExpanded,
-                        onDisconnect = {
-                            startService(
-                                Intent(this@OverlayService, FreefireVpnService::class.java).apply {
-                                    action = FreefireVpnService.ACTION_STOP
-                                }
-                            )
+                        state           = state,
+                        expanded        = expanded,
+                        onExpandedChange= ::updateExpanded,
+                        onDisconnect    = {
+                            startService(Intent(this@OverlayService, FreefireVpnService::class.java).apply {
+                                action = FreefireVpnService.ACTION_STOP
+                            })
                             stopSelf()
                         },
-                        onDismissOverlay = { stopSelf() },
-                        onPriorityChange = { checked -> stateFlow.update { it.copy(gamePriority = checked) } },
-                        onServerClick = { /* TODO: mở màn chọn máy chủ */ },
-                        onLanguageClick = { /* TODO: đổi ngôn ngữ */ },
-                        tab = tab,
-                        onTabSelected = { tab = it },
-                        boost = boost,
-                        onBoostChange = { boost = it },
-                        onEagleEyeChange = { checked -> stateFlow.update { it.copy(eagleEyeEnabled = checked) } },
-                        widthScale = widthScale,
-                        heightScale = heightScale,
-                        onSizeChange = ::updatePanelSize,
-                        panelScale = panelScale,
+                        onDismissOverlay= { stopSelf() },
+                        onPriorityChange= { checked -> stateFlow.update { it.copy(gamePriority = checked) } },
+                        onServerClick   = {},
+                        onLanguageClick = {},
+                        tab             = tab,
+                        onTabSelected   = { tab = it },
+                        boost           = boost,
+                        onBoostChange   = { newBoost ->
+                            boost = newBoost
+                            // ═══ GHIM (Chế độ ghim) → FreezeController ═══
+                            FreezeController.available    = newBoost.pinEnabled
+                            FreezeController.applyManualFreeze(newBoost.pinEnabled)
+                        },
+                        onEagleEyeChange= { checked ->
+                            // ═══ MẮT THẦN → bật/tắt EspHudView ═══
+                            stateFlow.update { it.copy(eagleEyeEnabled = checked) }
+                            espHudView?.espEnabled = checked
+                        },
+                        widthScale      = widthScale,
+                        heightScale     = heightScale,
+                        onSizeChange    = ::updatePanelSize,
+                        panelScale      = panelScale,
                     )
                 }
             }
@@ -150,6 +184,8 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner, ViewM
         windowManager.addView(container, params)
     }
 
+    // ─── Window management ────────────────────────────────────
+
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
         if (!::windowManager.isInitialized || overlayView == null) return
@@ -157,130 +193,67 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner, ViewM
         overlayView?.let { windowManager.updateViewLayout(it, params) }
     }
 
-    /** Chuyển giữa chip thu gọn và bảng đầy đủ, tự tính kích thước chuẩn theo màn hình hiện tại. */
     private fun updateExpanded(value: Boolean) {
         expanded = value
         applyWindowBounds(centerIfUnset = true)
         overlayView?.let { windowManager.updateViewLayout(it, params) }
     }
 
-    private fun updatePanelSize(newWidthScale: Float, newHeightScale: Float) {
-        widthScale = newWidthScale
-        heightScale = newHeightScale
-        if (expanded) {
-            applyWindowBounds(centerIfUnset = false)
-            overlayView?.let { windowManager.updateViewLayout(it, params) }
-        }
+    private fun updatePanelSize(newW: Float, newH: Float) {
+        widthScale = newW; heightScale = newH
+        if (expanded) { applyWindowBounds(false); overlayView?.let { windowManager.updateViewLayout(it, params) } }
     }
 
     private fun applyWindowBounds(centerIfUnset: Boolean) {
         val (screenW, screenH) = screenSizePx()
         if (expanded) {
             val d = resources.displayMetrics.density
-            val designW = 700f * widthScale
-            val designH = 350f * heightScale
-            val maxW = (screenW * 0.96f) / (designW * d)
-            val maxH = (screenH * 0.92f) / (designH * d)
-            val scale = minOf(PANEL_SCALE, maxW, maxH).coerceAtLeast(0.42f)
-            val wPx = ceil(designW * d * scale).toInt()
-            val hPx = ceil(designH * d * scale).toInt()
-            panelScale = scale
-            params.width = wPx
-            params.height = hPx
-            if (panelX < 0 && centerIfUnset) {
-                panelX = ((screenW - wPx) / 2).coerceAtLeast(0)
-                panelY = ((screenH - hPx) / 2).coerceAtLeast(0)
-            }
-            panelX = panelX.coerceIn(0, (screenW - wPx).coerceAtLeast(0))
-            panelY = panelY.coerceIn(0, (screenH - hPx).coerceAtLeast(0))
-            params.x = panelX
-            params.y = panelY
+            val designW = 700f * widthScale; val designH = 350f * heightScale
+            val scale   = minOf(PANEL_SCALE, (screenW * 0.96f) / (designW * d), (screenH * 0.92f) / (designH * d)).coerceAtLeast(0.42f)
+            val wPx = ceil(designW * d * scale).toInt(); val hPx = ceil(designH * d * scale).toInt()
+            panelScale = scale; params.width = wPx; params.height = hPx
+            if (panelX < 0 && centerIfUnset) { panelX = ((screenW - wPx) / 2).coerceAtLeast(0); panelY = ((screenH - hPx) / 2).coerceAtLeast(0) }
+            panelX = panelX.coerceIn(0, (screenW - wPx).coerceAtLeast(0)); panelY = panelY.coerceIn(0, (screenH - hPx).coerceAtLeast(0))
+            params.x = panelX; params.y = panelY
         } else {
-            params.width = WindowManager.LayoutParams.WRAP_CONTENT
-            params.height = WindowManager.LayoutParams.WRAP_CONTENT
-            val viewW = currentViewWidthPx()
-            val viewH = currentViewHeightPx()
-            chipX = chipX.coerceIn(0, (screenW - viewW).coerceAtLeast(0))
-            chipY = chipY.coerceIn(0, (screenH - viewH).coerceAtLeast(0))
-            params.x = chipX
-            params.y = chipY
+            params.width = WindowManager.LayoutParams.WRAP_CONTENT; params.height = WindowManager.LayoutParams.WRAP_CONTENT
+            chipX = chipX.coerceIn(0, (screenW - currentViewWidthPx()).coerceAtLeast(0)); chipY = chipY.coerceIn(0, (screenH - currentViewHeightPx()).coerceAtLeast(0))
+            params.x = chipX; params.y = chipY
         }
     }
 
-    private fun moveOverlayTo(rawTargetX: Int, rawTargetY: Int) {
-        val (screenW, screenH) = screenSizePx()
-        val maxX = (screenW - currentViewWidthPx()).coerceAtLeast(0)
-        val maxY = (screenH - currentViewHeightPx()).coerceAtLeast(0)
-        val clampedX = rawTargetX.coerceIn(0, maxX)
-        val clampedY = rawTargetY.coerceIn(0, maxY)
-        params.x = clampedX
-        params.y = clampedY
-        if (expanded) {
-            panelX = clampedX
-            panelY = clampedY
-        } else {
-            chipX = clampedX
-            chipY = clampedY
-        }
+    private fun moveOverlayTo(rx: Int, ry: Int) {
+        val (sw, sh) = screenSizePx()
+        val cx = rx.coerceIn(0, (sw - currentViewWidthPx()).coerceAtLeast(0))
+        val cy = ry.coerceIn(0, (sh - currentViewHeightPx()).coerceAtLeast(0))
+        params.x = cx; params.y = cy
+        if (expanded) { panelX = cx; panelY = cy } else { chipX = cx; chipY = cy }
         overlayView?.let { windowManager.updateViewLayout(it, params) }
     }
 
-    private fun currentViewWidthPx(): Int =
-        if (params.width > 0) params.width
-        else overlayView?.width?.takeIf { it > 0 } ?: (96 * resources.displayMetrics.density).toInt()
-
-    private fun currentViewHeightPx(): Int =
-        if (params.height > 0) params.height
-        else overlayView?.height?.takeIf { it > 0 } ?: (36 * resources.displayMetrics.density).toInt()
-
+    private fun currentViewWidthPx()  = if (params.width  > 0) params.width  else overlayView?.width?.takeIf  { it > 0 } ?: (96 * resources.displayMetrics.density).toInt()
+    private fun currentViewHeightPx() = if (params.height > 0) params.height else overlayView?.height?.takeIf { it > 0 } ?: (36 * resources.displayMetrics.density).toInt()
     private fun screenSizePx(): Pair<Int, Int> =
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            val b = windowManager.currentWindowMetrics.bounds
-            b.width() to b.height()
-        } else {
-            val dm = resources.displayMetrics
-            dm.widthPixels to dm.heightPixels
-        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) { val b = windowManager.currentWindowMetrics.bounds; b.width() to b.height() }
+        else { val dm = resources.displayMetrics; dm.widthPixels to dm.heightPixels }
 
-    /**
-     * Bọc ComposeView để bắt cử chỉ kéo bằng tọa độ màn hình (rawX/rawY) không bị giật,
-     * trong khi chạm nhẹ vẫn truyền bình thường xuống các nút Compose bên trong.
-     */
     private inner class DraggableOverlayContainer(context: Context) : FrameLayout(context) {
         private val touchSlop = ViewConfiguration.get(context).scaledTouchSlop.toFloat()
-        private var downRawX = 0f
-        private var downRawY = 0f
-        private var startX = 0
-        private var startY = 0
+        private var downRawX = 0f; private var downRawY = 0f
+        private var startX = 0;    private var startY = 0
         private var dragging = false
 
         override fun onInterceptTouchEvent(ev: MotionEvent): Boolean {
             when (ev.actionMasked) {
-                MotionEvent.ACTION_DOWN -> {
-                    downRawX = ev.rawX
-                    downRawY = ev.rawY
-                    startX = params.x
-                    startY = params.y
-                    dragging = false
-                }
-                MotionEvent.ACTION_MOVE -> {
-                    if (!dragging && hypot((ev.rawX - downRawX).toDouble(), (ev.rawY - downRawY).toDouble()) > touchSlop) {
-                        dragging = true
-                        return true
-                    }
-                }
+                MotionEvent.ACTION_DOWN  -> { downRawX = ev.rawX; downRawY = ev.rawY; startX = params.x; startY = params.y; dragging = false }
+                MotionEvent.ACTION_MOVE  -> { if (!dragging && hypot((ev.rawX - downRawX).toDouble(), (ev.rawY - downRawY).toDouble()) > touchSlop) { dragging = true; return true } }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> dragging = false
             }
             return false
         }
-
         override fun onTouchEvent(ev: MotionEvent): Boolean {
             when (ev.actionMasked) {
-                MotionEvent.ACTION_MOVE -> {
-                    if (dragging) {
-                        moveOverlayTo(startX + (ev.rawX - downRawX).toInt(), startY + (ev.rawY - downRawY).toInt())
-                    }
-                }
+                MotionEvent.ACTION_MOVE -> if (dragging) moveOverlayTo(startX + (ev.rawX - downRawX).toInt(), startY + (ev.rawY - downRawY).toInt())
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> dragging = false
             }
             return true
@@ -290,30 +263,24 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner, ViewM
     private fun startAsForeground() {
         val channelId = "veil_overlay"
         val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
-        nm.createNotificationChannel(
-            NotificationChannel(channelId, "Bảng thông tin trong game", NotificationManager.IMPORTANCE_LOW)
-        )
-        val notification: Notification = NotificationCompat.Builder(this, channelId)
+        nm.createNotificationChannel(NotificationChannel(channelId, "Bảng thông tin trong game", NotificationManager.IMPORTANCE_LOW))
+        val notification = NotificationCompat.Builder(this, channelId)
             .setSmallIcon(android.R.drawable.ic_lock_idle_lock)
             .setContentTitle("Foxy VPN đang bảo vệ kết nối")
-            .setContentText("Bảng thông tin trong game đang bật")
-            .setOngoing(true)
-            .build()
-        ServiceCompat.startForeground(
-            this,
-            NOTIF_ID,
-            notification,
-            if (Build.VERSION.SDK_INT >= 34) ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE else 0,
-        )
+            .setContentText("Mắt thần đang hoạt động")
+            .setOngoing(true).build()
+        ServiceCompat.startForeground(this, NOTIF_ID, notification,
+            if (Build.VERSION.SDK_INT >= 34) ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE else 0)
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onDestroy() {
         if (::windowManager.isInitialized) {
-            overlayView?.let { windowManager.removeView(it) }
+            espHudView?.let   { runCatching { windowManager.removeView(it) } }
+            overlayView?.let  { runCatching { windowManager.removeView(it) } }
         }
-        overlayView = null
+        espHudView = null; overlayView = null
         lifecycleRegistry.currentState = Lifecycle.State.DESTROYED
         store.clear()
         super.onDestroy()
@@ -324,13 +291,8 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner, ViewM
         val stateFlow = MutableStateFlow(GameOverlayState())
 
         fun start(context: Context) {
-            if (Settings.canDrawOverlays(context)) {
-                ContextCompat.startForegroundService(context, Intent(context, OverlayService::class.java))
-            }
+            if (Settings.canDrawOverlays(context)) ContextCompat.startForegroundService(context, Intent(context, OverlayService::class.java))
         }
-
-        fun stop(context: Context) {
-            context.stopService(Intent(context, OverlayService::class.java))
-        }
+        fun stop(context: Context) { context.stopService(Intent(context, OverlayService::class.java)) }
     }
 }
