@@ -171,25 +171,35 @@ class PacketTunnelEngine(
         // Data / FIN
         val flow = tcpFlows[flowKey] ?: return
 
-        // Đợi connected (tối đa 500ms, không block tunnel thread)
+        // Đợi connected — không block main thread
         if (!flow.connected) return
 
         flow.lastUsed = System.currentTimeMillis()
 
         if (payload.isNotEmpty()) {
-            try {
-                flow.socket?.outputStream?.write(payload)
-                flow.socket?.outputStream?.flush()
-                flow.clientNext = flow.clientNext + payload.size
-
-                // ACK lại cho game
-                writeTun(buildTcpPkt(dstIp, dstPort, srcIp, srcPort,
-                    seq   = flow.serverNext,
-                    ack   = flow.clientNext,
-                    flags = TCP_ACK, win = 65535, data = ByteArray(0)))
-            } catch (e: Exception) {
-                Log.w(TAG, "TCP forward error: $e")
-                tcpFlows.remove(flowKey)?.socket?.close()
+            // Gốc (TcpFlow line 120): writes: ConcurrentLinkedQueue — writer thread riêng
+            // Ta: submit worker, synchronized(flow) để giữ ordering, không block main thread
+            val data     = payload          // đã copyOfRange → independent copy
+            val fKey     = flowKey
+            val fRef     = flow
+            val sIp      = srcIp; val sPort = srcPort
+            val dIp      = dstIp; val dPort = dstPort
+            workers.submit {
+                try {
+                    synchronized(fRef) {
+                        fRef.socket?.outputStream?.write(data)
+                        fRef.socket?.outputStream?.flush()
+                        fRef.clientNext += data.size.toLong()
+                    }
+                    // ACK gửi SAU KHI write thành công (giống gốc)
+                    writeTun(buildTcpPkt(dIp, dPort, sIp, sPort,
+                        seq   = fRef.serverNext,
+                        ack   = fRef.clientNext,
+                        flags = TCP_ACK, win = 65535, data = ByteArray(0)))
+                } catch (e: Exception) {
+                    Log.w(TAG, "TCP forward error: $e")
+                    tcpFlows.remove(fKey)?.socket?.close()
+                }
             }
         }
 
