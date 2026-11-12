@@ -27,6 +27,7 @@ import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.PowerSettingsNew
 import androidx.compose.material.icons.rounded.Public
+import androidx.compose.material.icons.rounded.Remove
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.VerifiedUser
 import androidx.compose.material3.Icon
@@ -49,18 +50,20 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.layout.requiredSize
 import com.example.foxy.ui.home.CountryFlag
 import com.example.foxy.ui.home.SignalBars
 import com.example.foxy.ui.theme.VeilColors
 import com.example.foxy.ui.theme.VeilTheme
 import java.util.Locale
 
-/** Tỉ lệ thu nhỏ của bảng (thiết kế dùng 0.76). Tăng lên 0.85 nếu thấy chữ nhỏ. */
+/** Tỉ lệ thu nhỏ mặc định của bảng (700x350 dp * 0.76 = 532x266 dp). */
 const val PANEL_SCALE = 0.76f
 
 private val CardBg = Color.White.copy(alpha = 0.07f)
@@ -69,7 +72,6 @@ private val HeroInk = Color(0xFF10282B)
 private val HeroInkSoft = Color(0xFF12423B)
 
 data class GameOverlayState(
-    val userName: String = "Robert",
     val serverName: String = "United States",
     val serverCountryCode: String = "US",
     val signalLevel: Int = 3,
@@ -84,8 +86,8 @@ data class GameOverlayState(
 
 /**
  * Bảng điều khiển VPN hiện trên game.
- * - expanded = false: chỉ hiện chip độ trễ nhỏ.
- * - expanded = true: hiện bảng đầy đủ (kích thước thiết kế 700 x 350 dp, thu theo PANEL_SCALE).
+ * - expanded = false: chỉ hiện chip độ trễ nhỏ (chạm để mở, kéo để di chuyển).
+ * - expanded = true: hiện bảng đầy đủ 700x350 dp theo tỉ lệ panelScale.
  */
 @Composable
 fun GameOverlay(
@@ -93,29 +95,36 @@ fun GameOverlay(
     expanded: Boolean,
     onExpandedChange: (Boolean) -> Unit,
     onDisconnect: () -> Unit,
+    onDismissOverlay: () -> Unit,
     onPriorityChange: (Boolean) -> Unit,
     onServerClick: () -> Unit,
     onLanguageClick: () -> Unit,
     modifier: Modifier = Modifier,
+    panelScale: Float = PANEL_SCALE,
 ) {
     if (!expanded) {
         PingChip(state.pingMs, { onExpandedChange(true) }, modifier)
         return
     }
     val d = LocalDensity.current
-    // Thu nhỏ cả dp lẫn sp cùng lúc, bố cục giữ nguyên tỉ lệ.
-    CompositionLocalProvider(LocalDensity provides Density(d.density * PANEL_SCALE, d.fontScale)) {
+    // Thu nhỏ cả dp lẫn sp theo panelScale và dùng requiredSize để tránh bị WindowManager bóp ngang.
+    CompositionLocalProvider(LocalDensity provides Density(d.density * panelScale, d.fontScale)) {
         Row(
             modifier
-                .size(700.dp, 350.dp)
+                .requiredSize(700.dp, 350.dp)
                 .clip(RoundedCornerShape(28.dp))
-                .background(Color(0xFF1C2A2D).copy(alpha = 0.95f))
+                .background(Color(0xFF1C2A2D).copy(alpha = 0.96f))
+                .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(28.dp))
                 .padding(14.dp),
             horizontalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             Rail()
             Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                TopBar(state, onClose = { onExpandedChange(false) })
+                TopBar(
+                    state = state,
+                    onCollapse = { onExpandedChange(false) },
+                    onDismiss = onDismissOverlay,
+                )
                 Row(Modifier.weight(1f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         PingHero(state, Modifier.weight(1f).fillMaxWidth())
@@ -139,10 +148,11 @@ fun GameOverlay(
 fun PingChip(pingMs: Int, onClick: () -> Unit, modifier: Modifier = Modifier) {
     Row(
         modifier
-            .clip(RoundedCornerShape(14.dp))
-            .background(Color.Black.copy(alpha = 0.45f))
+            .clip(RoundedCornerShape(16.dp))
+            .background(Color(0xFF1C2A2D).copy(alpha = 0.88f))
+            .border(1.dp, Color.White.copy(alpha = 0.18f), RoundedCornerShape(16.dp))
             .clickable(onClickLabel = "Mở bảng điều khiển", role = Role.Button, onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 5.dp),
+            .padding(horizontal = 12.dp, vertical = 7.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
@@ -177,13 +187,15 @@ private fun Rail() {
 }
 
 @Composable
-private fun TopBar(state: GameOverlayState, onClose: () -> Unit) {
-    Row(Modifier.fillMaxWidth().height(40.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        Text("XIN CHÀO", fontSize = 11.sp, letterSpacing = 0.8.sp, color = Soft)
-        Text(state.userName, color = Color.White, fontWeight = FontWeight.Bold)
-        Spacer(Modifier.weight(1f))
+private fun TopBar(state: GameOverlayState, onCollapse: () -> Unit, onDismiss: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().height(40.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
         Row(
-            Modifier.clip(RoundedCornerShape(18.dp)).background(Color.White.copy(alpha = 0.08f)).padding(horizontal = 14.dp, vertical = 7.dp),
+            Modifier.weight(1f, fill = false).clip(RoundedCornerShape(18.dp)).background(Color.White.copy(alpha = 0.08f))
+                .padding(horizontal = 14.dp, vertical = 7.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
@@ -193,13 +205,21 @@ private fun TopBar(state: GameOverlayState, onClose: () -> Unit) {
                     withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append("Đã kết nối") }
                     append(" · " + state.serverName)
                 },
-                color = Color.White, fontSize = 13.sp,
+                color = Color.White,
+                fontSize = 13.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
         }
+        Spacer(Modifier.weight(1f))
         Box(
-            Modifier.size(40.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.08f)).clickable(role = Role.Button, onClick = onClose),
+            Modifier.size(38.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.10f)).clickable(role = Role.Button, onClick = onCollapse),
             contentAlignment = Alignment.Center,
-        ) { Icon(Icons.Rounded.Close, "Thu gọn", Modifier.size(18.dp), tint = Color.White) }
+        ) { Icon(Icons.Rounded.Remove, "Thu gọn thành chip", Modifier.size(20.dp), tint = Color.White) }
+        Box(
+            Modifier.size(38.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.10f)).clickable(role = Role.Button, onClick = onDismiss),
+            contentAlignment = Alignment.Center,
+        ) { Icon(Icons.Rounded.Close, "Tắt menu", Modifier.size(18.dp), tint = Color.White) }
     }
 }
 
@@ -347,7 +367,7 @@ private fun DisconnectButton(onClick: () -> Unit) {
 @Composable
 private fun PreviewExpanded() = VeilTheme {
     Box(Modifier.fillMaxSize().background(Color(0xFF101619)), contentAlignment = Alignment.Center) {
-        GameOverlay(GameOverlayState(), true, {}, {}, {}, {}, {})
+        GameOverlay(GameOverlayState(), true, {}, {}, {}, {}, {}, {})
     }
 }
 
@@ -355,6 +375,6 @@ private fun PreviewExpanded() = VeilTheme {
 @Composable
 private fun PreviewCollapsed() = VeilTheme {
     Box(Modifier.fillMaxSize().background(Color(0xFF101619)).padding(14.dp)) {
-        GameOverlay(GameOverlayState(), false, {}, {}, {}, {}, {})
+        GameOverlay(GameOverlayState(), false, {}, {}, {}, {}, {}, {})
     }
 }

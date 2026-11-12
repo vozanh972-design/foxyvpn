@@ -7,14 +7,19 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.content.res.Configuration
 import android.graphics.PixelFormat
 import android.os.Build
 import android.os.IBinder
 import android.provider.Settings
 import android.view.Gravity
+import android.view.MotionEvent
+import android.view.ViewConfiguration
 import android.view.WindowManager
+import android.widget.FrameLayout
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.ComposeView
@@ -37,6 +42,8 @@ import com.example.foxy.ui.theme.VeilTheme
 import com.example.foxy.vpn.FreefireVpnService
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.update
+import kotlin.math.ceil
+import kotlin.math.hypot
 
 /**
  * Service hiển thị GameOverlay nổi trên game (cần quyền "Hiển thị trên ứng dụng khác").
@@ -51,18 +58,31 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner, ViewM
     override val viewModelStore: ViewModelStore get() = store
 
     private lateinit var windowManager: WindowManager
-    private var overlayView: ComposeView? = null
+    private var overlayView: FrameLayout? = null
     private var expanded by mutableStateOf(false)
+    private var panelScale by mutableFloatStateOf(PANEL_SCALE)
+
+    // Lưu vị trí riêng cho chip thu gọn và bảng mở rộng (tính từ góc trên trái).
+    private var chipX = 0
+    private var chipY = 0
+    private var panelX = -1
+    private var panelY = -1
 
     private val params by lazy {
         val d = resources.displayMetrics.density
+        chipX = (14 * d).toInt()
+        chipY = (10 * d).toInt()
         WindowManager.LayoutParams(
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
             PixelFormat.TRANSLUCENT,
-        ).apply { gravity = Gravity.TOP or Gravity.START; x = (14 * d).toInt(); y = (10 * d).toInt() }
+        ).apply {
+            gravity = Gravity.TOP or Gravity.START
+            x = chipX
+            y = chipY
+        }
     }
 
     override fun onCreate() {
@@ -81,11 +101,8 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner, ViewM
     }
 
     private fun showOverlay() {
-        val view = ComposeView(this).apply {
+        val compose = ComposeView(this).apply {
             setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindow)
-            setViewTreeLifecycleOwner(this@OverlayService)
-            setViewTreeSavedStateRegistryOwner(this@OverlayService)
-            setViewTreeViewModelStoreOwner(this@OverlayService)
             setContent {
                 val state by stateFlow.collectAsState()
                 VeilTheme {
@@ -101,25 +118,150 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner, ViewM
                             )
                             stopSelf()
                         },
+                        onDismissOverlay = { stopSelf() },
                         onPriorityChange = { checked -> stateFlow.update { it.copy(gamePriority = checked) } },
                         onServerClick = { /* TODO: mở màn chọn máy chủ */ },
                         onLanguageClick = { /* TODO: đổi ngôn ngữ */ },
+                        panelScale = panelScale,
                     )
                 }
             }
         }
-        overlayView = view
-        windowManager.addView(view, params)
+
+        val container = DraggableOverlayContainer(this).apply {
+            setViewTreeLifecycleOwner(this@OverlayService)
+            setViewTreeSavedStateRegistryOwner(this@OverlayService)
+            setViewTreeViewModelStoreOwner(this@OverlayService)
+            addView(compose)
+        }
+        overlayView = container
+        windowManager.addView(container, params)
     }
 
-    /** Mở rộng thì đưa bảng ra giữa màn hình, thu gọn thì đưa chip về góc trên trái. */
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        if (!::windowManager.isInitialized || overlayView == null) return
+        applyWindowBounds(centerIfUnset = false)
+        overlayView?.let { windowManager.updateViewLayout(it, params) }
+    }
+
+    /** Chuyển giữa chip thu gọn và bảng đầy đủ, tự tính kích thước chuẩn theo màn hình hiện tại. */
     private fun updateExpanded(value: Boolean) {
         expanded = value
-        val d = resources.displayMetrics.density
-        params.gravity = if (value) Gravity.CENTER else Gravity.TOP or Gravity.START
-        params.x = if (value) 0 else (14 * d).toInt()
-        params.y = if (value) 0 else (10 * d).toInt()
+        applyWindowBounds(centerIfUnset = true)
         overlayView?.let { windowManager.updateViewLayout(it, params) }
+    }
+
+    private fun applyWindowBounds(centerIfUnset: Boolean) {
+        val (screenW, screenH) = screenSizePx()
+        if (expanded) {
+            val d = resources.displayMetrics.density
+            val maxW = (screenW * 0.92f) / (700f * d)
+            val maxH = (screenH * 0.88f) / (350f * d)
+            val scale = minOf(PANEL_SCALE, maxW, maxH).coerceAtLeast(0.42f)
+            val wPx = ceil(700f * d * scale).toInt()
+            val hPx = ceil(350f * d * scale).toInt()
+            panelScale = scale
+            params.width = wPx
+            params.height = hPx
+            if (panelX < 0 && centerIfUnset) {
+                panelX = ((screenW - wPx) / 2).coerceAtLeast(0)
+                panelY = ((screenH - hPx) / 2).coerceAtLeast(0)
+            }
+            panelX = panelX.coerceIn(0, (screenW - wPx).coerceAtLeast(0))
+            panelY = panelY.coerceIn(0, (screenH - hPx).coerceAtLeast(0))
+            params.x = panelX
+            params.y = panelY
+        } else {
+            params.width = WindowManager.LayoutParams.WRAP_CONTENT
+            params.height = WindowManager.LayoutParams.WRAP_CONTENT
+            val viewW = currentViewWidthPx()
+            val viewH = currentViewHeightPx()
+            chipX = chipX.coerceIn(0, (screenW - viewW).coerceAtLeast(0))
+            chipY = chipY.coerceIn(0, (screenH - viewH).coerceAtLeast(0))
+            params.x = chipX
+            params.y = chipY
+        }
+    }
+
+    private fun moveOverlayTo(rawTargetX: Int, rawTargetY: Int) {
+        val (screenW, screenH) = screenSizePx()
+        val maxX = (screenW - currentViewWidthPx()).coerceAtLeast(0)
+        val maxY = (screenH - currentViewHeightPx()).coerceAtLeast(0)
+        val clampedX = rawTargetX.coerceIn(0, maxX)
+        val clampedY = rawTargetY.coerceIn(0, maxY)
+        params.x = clampedX
+        params.y = clampedY
+        if (expanded) {
+            panelX = clampedX
+            panelY = clampedY
+        } else {
+            chipX = clampedX
+            chipY = clampedY
+        }
+        overlayView?.let { windowManager.updateViewLayout(it, params) }
+    }
+
+    private fun currentViewWidthPx(): Int =
+        if (params.width > 0) params.width
+        else overlayView?.width?.takeIf { it > 0 } ?: (96 * resources.displayMetrics.density).toInt()
+
+    private fun currentViewHeightPx(): Int =
+        if (params.height > 0) params.height
+        else overlayView?.height?.takeIf { it > 0 } ?: (36 * resources.displayMetrics.density).toInt()
+
+    private fun screenSizePx(): Pair<Int, Int> =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            val b = windowManager.currentWindowMetrics.bounds
+            b.width() to b.height()
+        } else {
+            val dm = resources.displayMetrics
+            dm.widthPixels to dm.heightPixels
+        }
+
+    /**
+     * Bọc ComposeView để bắt cử chỉ kéo bằng tọa độ màn hình (rawX/rawY) không bị giật,
+     * trong khi chạm nhẹ vẫn truyền bình thường xuống các nút Compose bên trong.
+     */
+    private inner class DraggableOverlayContainer(context: Context) : FrameLayout(context) {
+        private val touchSlop = ViewConfiguration.get(context).scaledTouchSlop.toFloat()
+        private var downRawX = 0f
+        private var downRawY = 0f
+        private var startX = 0
+        private var startY = 0
+        private var dragging = false
+
+        override fun onInterceptTouchEvent(ev: MotionEvent): Boolean {
+            when (ev.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    downRawX = ev.rawX
+                    downRawY = ev.rawY
+                    startX = params.x
+                    startY = params.y
+                    dragging = false
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    if (!dragging && hypot((ev.rawX - downRawX).toDouble(), (ev.rawY - downRawY).toDouble()) > touchSlop) {
+                        dragging = true
+                        return true
+                    }
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> dragging = false
+            }
+            return false
+        }
+
+        override fun onTouchEvent(ev: MotionEvent): Boolean {
+            when (ev.actionMasked) {
+                MotionEvent.ACTION_MOVE -> {
+                    if (dragging) {
+                        moveOverlayTo(startX + (ev.rawX - downRawX).toInt(), startY + (ev.rawY - downRawY).toInt())
+                    }
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> dragging = false
+            }
+            return true
+        }
     }
 
     private fun startAsForeground() {
