@@ -1,10 +1,10 @@
-package com.example.foxy.engine
+﻿package com.example.foxy.engine
 
 import java.util.concurrent.ConcurrentHashMap
 
 /**
- * PoseFreezeEngine — Rewrite position trong outbound UDP packets khi Ghim bật.
- * Mỗi flow theo dõi vị trí bị "pin" khi freeze active.
+ * PoseFreezeEngine â€” Rewrite position trong outbound UDP packets khi Ghim báº­t.
+ * Má»—i flow theo dÃµi vá»‹ trÃ­ bá»‹ "pin" khi freeze active.
  */
 object PoseFreezeEngine {
 
@@ -17,17 +17,17 @@ object PoseFreezeEngine {
 
     private val flows = ConcurrentHashMap<String, FlowState>()
 
-    /** Returns modified packet hoặc null nếu không cần modify. */
+    /** Returns modified packet hoáº·c null náº¿u khÃ´ng cáº§n modify. */
     fun process(flowKey: String, data: ByteArray, outbound: Boolean): ByteArray? {
-        if (!outbound) return null  // Inbound: không modify
+        if (!outbound) return null  // Inbound: khÃ´ng modify
 
         val shouldFreeze = FreezeController.isFreezeActive()
         val flow = flows.getOrPut(flowKey) { FlowState() }
 
-        // Lấy vị trí local player để pin
+        // Láº¥y vá»‹ trÃ­ local player Ä‘á»ƒ pin
         val lp = EspEntityStore.snapshot().localPlayer
         if (lp != null && !shouldFreeze) {
-            // Cập nhật pinned position khi không freeze
+            // Cáº­p nháº­t pinned position khi khÃ´ng freeze
             flow.pinnedX = (lp.x * 1000).toLong()
             flow.pinnedY = (lp.y * 1000).toLong()
             flow.pinnedZ = (lp.z * 1000).toLong()
@@ -36,13 +36,13 @@ object PoseFreezeEngine {
 
         if (!shouldFreeze || !flow.hasPinned) return null  // Pass through
 
-        // === FREEZE: thử rewrite position varints trong packet ===
+        // === FREEZE: thá»­ rewrite position varints trong packet ===
         return rewritePosition(data, flow.pinnedX, flow.pinnedY, flow.pinnedZ)
     }
 
     private fun rewritePosition(data: ByteArray, px: Long, py: Long, pz: Long): ByteArray? {
         if (data.size < 10) return null
-        // Parse header để tìm body start
+        // Parse header Ä‘á»ƒ tÃ¬m body start
         val headerSize = if ((data[0].toInt() and 0xFF) < 100) 10 else 8
         if (data.size <= headerSize) return null
 
@@ -50,7 +50,7 @@ object PoseFreezeEngine {
         val newY = encodeVarint(zigZagEncode(py))
         val newZ = encodeVarint(zigZagEncode(pz))
 
-        // Thử scan body cho 3 zigzag varints liên tiếp hợp lệ ở đầu
+        // Thá»­ scan body cho 3 zigzag varints liÃªn tiáº¿p há»£p lá»‡ á»Ÿ Ä‘áº§u
         val cur = intArrayOf(headerSize)
         val body = data
         val x = VerifiedEspParser.readVarint(body, cur, body.size)
@@ -58,10 +58,10 @@ object PoseFreezeEngine {
         val z = VerifiedEspParser.readVarint(body, cur, body.size)
         if (x < 0 || y < 0 || z < 0) return null
 
-        // Kiểm tra giá trị hợp lý (tránh rewrite packet không phải position)
-        val fx = VerifiedEspParser.zigZagDecode(x) / 1000f
-        val fy = VerifiedEspParser.zigZagDecode(y) / 1000f
-        val fz = VerifiedEspParser.zigZagDecode(z) / 1000f
+        // Kiá»ƒm tra giÃ¡ trá»‹ há»£p lÃ½ (trÃ¡nh rewrite packet khÃ´ng pháº£i position)
+        val fx = VerifiedEspParser.zigZag(x) / 1000f
+        val fy = VerifiedEspParser.zigZag(y) / 1000f
+        val fz = VerifiedEspParser.zigZag(z) / 1000f
         if (Math.abs(fx) > 8000 || fy < -50 || fy > 500 || Math.abs(fz) > 8000) return null
 
         val newBody = newX + newY + newZ + body.copyOfRange(cur[0], body.size)
