@@ -110,13 +110,28 @@ class EspHudView(context: Context) : View(context) {
 
             seen += entity.id
 
-            // Smooth frames (giống line 115-120)
+            // Smooth frames — EspMotionSmoother.java line 17-24 (C0070.m856 → C0076.m3635 → C0079.m4104 → EspMotionSmoother.step)
+            // Gốc: factor = exp(-min(100, max(1, dt)) / tau), tau=85(smooth)/65(not smooth)
+            // Chỉ smooth khi: dt<=250 AND prevPts!=null AND hypot(headDx,headDy) < min(W,H)*0.25
             val rawPts = floatArrayOf(foot[0], foot[1], head[0], head[1])
             val prevPts = smoothFrames[entity.id]
-            val pts = if (prevPts != null && smoothEnabled) {
-                val alpha = (dt / 50f).coerceIn(0f, 1f)
-                FloatArray(4) { i -> prevPts[i] + (rawPts[i] - prevPts[i]) * alpha }
-            } else rawPts
+            val pts: FloatArray
+            if (dt <= 250L && prevPts != null) {
+                val headDx = rawPts[2] - prevPts[2]
+                val headDy = rawPts[3] - prevPts[3]
+                val headScreenDist = hypot(headDx, headDy)
+                if (headScreenDist < minOf(W, H) * 0.25f) {
+                    // Exponential decay — giống gốc EspMotionSmoother line 20
+                    val cappedDt = dt.coerceIn(1L, 100L).toFloat()
+                    val tau = if (smoothEnabled) 85.0f else 65.0f
+                    val factor = exp(-cappedDt / tau)         // = e^(-dt/tau)
+                    pts = FloatArray(4) { i -> prevPts[i] + (rawPts[i] - prevPts[i]) * (1f - factor) }
+                } else {
+                    pts = rawPts   // Gốc: snap khi jump màn hình lớn (không blend chậm)
+                }
+            } else {
+                pts = rawPts   // dt>250 hoặc không có prevPts → không smooth
+            }
             smoothFrames[entity.id] = pts
 
             // Tính box (giống lines 121-127)
@@ -225,7 +240,7 @@ class EspPoseInterpolator {
         val shouldReset = !ready
             || entityTime < this.time
             || (now - this.time) > 1000L           // Gap > 1 giay (entity mat tich)
-            || dist2(newX-x, newY-y, newZ-z) > 25f // Jump > 5 met (goc: 25f)
+            || dist2(newX-x, newY-y, newZ-z) > 625f // Gốc line 181: sqrt(dist2) > 25 = dist > 25m (25²=625)
 
         if (shouldReset) {
             px = newX; x = newX
