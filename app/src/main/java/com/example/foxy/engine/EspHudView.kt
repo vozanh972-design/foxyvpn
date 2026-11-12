@@ -153,7 +153,7 @@ class EspHudView(context: Context) : View(context) {
             // QUAN TRỌNG: gốc là dp(44) từ TOP, không phải từ bottom!
             paint.strokeWidth = dp(1f)
             paint.color = Color.argb(lineAlpha, 255, 255, 255)  // ← TRẮNG (gốc: 0,255,0)
-            canvas.drawLine(0.5f * W, dp(44f), head[0], head[1], paint)
+            canvas.drawLine(0.5f * W, dp(44f), pts[2], pts[3], paint)
 
             // ══ 3. VẼ HEALTH BAR (bên phải box, dọc) — lines 136-141 ══
             val hpRatio = (entity.health.coerceIn(0, 200).toFloat() / 200f).coerceAtLeast(0f)

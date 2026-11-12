@@ -158,10 +158,12 @@ object VerifiedEspParser {
 
         EspEntityStore.updateLocal(id, x, y, z)
 
-        // Direction fields[13,14,15] — short2float khong dung toShort() (copy tu smali)
-        val dx = short2float(fields[13].toInt())
-        val dy = short2float(fields[14].toInt())
-        val dz = short2float(fields[15].toInt())
+        // Direction fields[13,14,15] — IEEE 754 raw int bits → Float.intBitsToFloat
+        // Smali chain: ۦۢۦۥ(I)F → ۟۟ۡۤۨ(I)F → ۥۦۤۨ(I)F → java.lang.Float.intBitsToFloat(I)F
+        // KHÔNG phải v/32767f (đó là normalized short, sai hoàn toàn!)
+        val dx = java.lang.Float.intBitsToFloat(fields[13].toInt())
+        val dy = java.lang.Float.intBitsToFloat(fields[14].toInt())
+        val dz = java.lang.Float.intBitsToFloat(fields[15].toInt())
         val mag2 = dx * dx + dy * dy + dz * dz
         if (mag2.isFinite() && mag2 > 0.25f && mag2 < 4.0f) {
             EspEntityStore.updateDirection(dx, dy, dz)

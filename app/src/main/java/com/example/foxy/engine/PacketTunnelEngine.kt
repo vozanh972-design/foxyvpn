@@ -123,7 +123,7 @@ class PacketTunnelEngine(
         val isRst = (flags and TCP_RST) != 0
 
         if (isRst) {
-            tcpFlows.remove(flowKey)?.socket?.close()
+            tcpFlows.remove(flowKey)?.also { it.isClosed = true; it.socket?.close() }
             return
         }
 
@@ -137,8 +137,13 @@ class PacketTunnelEngine(
             workers.submit {
                 try {
                     val sock = Socket()
+                    sock.reuseAddress = true          // ← gốc smali setReuseAddress(true)
+                    sock.bind(InetSocketAddress(0))   // ← gốc: bind trước khi protect
                     vpn.protect(sock)   // Bypass VPN loop!
-                    sock.soTimeout = 30_000
+                    sock.keepAlive = true             // ← gốc smali setKeepAlive(true)
+                    sock.sendBufferSize    = 262_144  // ← gốc 0x40000
+                    sock.receiveBufferSize = 262_144  // ← gốc 0x40000
+                    sock.soTimeout = 1_000            // ← gốc 0x3e8=1000ms (KHÔNG PHẢI 30s!)
                     sock.tcpNoDelay = true
                     sock.connect(InetSocketAddress(dstIp, dstPort), 10_000)
 
@@ -204,6 +209,7 @@ class PacketTunnelEngine(
         }
 
         if (isFin) {
+            flow.isClosed = true
             flow.clientNext++
             runCatching { flow.socket?.shutdownOutput() }
             writeTun(buildTcpPkt(dstIp, dstPort, srcIp, srcPort,
@@ -225,8 +231,15 @@ class PacketTunnelEngine(
         val buf = ByteArray(32768)
         try {
             val input = flow.socket?.inputStream ?: return
-            while (running.get() && !flow.socket!!.isClosed) {
-                val n = input.read(buf)
+            // soTimeout=1s → loop check flow còn sống mỗi 1s (giống gốc smali)
+            while (running.get() && !flow.isClosed) {
+                val n = try {
+                    input.read(buf)
+                } catch (e: java.net.SocketTimeoutException) {
+                    continue   // ← TIMEOUT = tiếp tục check, KHÔNG phải đóng!
+                } catch (e: Exception) {
+                    break      // Socket thực sự đóng
+                }
                 if (n <= 0) break
                 val data = buf.copyOf(n)
                 writeTun(buildTcpPkt(serverIp, serverPort, clientIp, clientPort,
@@ -473,6 +486,7 @@ class PacketTunnelEngine(
     ) {
         var socket: Socket? = null
         @Volatile var connected = false
+        @Volatile var isClosed  = false   // ← set true khi nhận RST/FIN từ game
         val myIsn: Long = (System.nanoTime() and 0xFFFFFFFFL)
         @Volatile var clientNext: Long = clientIsn + 1L
         @Volatile var serverNext: Long = myIsn + 1L
