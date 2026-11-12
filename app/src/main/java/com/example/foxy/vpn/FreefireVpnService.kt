@@ -65,63 +65,82 @@ class FreefireVpnService : VpnService() {
         showNotification()
 
         scope.launch {
-            try {
-                // 1. Build TUN interface
-                val builder = Builder()
-                    .setSession("Foxy VPN")
-                    .addAddress(VPN_ADDRESS, 24)
-                    .addRoute("0.0.0.0", 0)
-                    .addDnsServer(VPN_DNS)
-                    .addDnsServer(VPN_DNS2)
-                    .setMtu(MTU)
-                    .setBlocking(true)   // Blocking mode cho tunnel engine
-
-                // ════════════════════════════════════════════════════════
-                // QUAN TRỌNG: CHỈ route traffic của game vào VPN tunnel
-                // (giống logic gốc Pigboy — addAllowedApplication)
-                // Nếu addRoute tất cả mà không lọc → proxy 100% traffic → đơ game!
-                // ════════════════════════════════════════════════════════
+            // ════════════════════════════════════════════════════════
+            // RESTART LOOP — equivalent của watchdog A1$100000003 trong gốc:
+            //   A1$100000001.run(): engine.start() thoát → setRunning(false)
+            //   A1$100000003.run(): detect → sleep(0x3e8=1000ms) → post restart
+            //   A1$100000003$100000002.run(): rebuild VPN + engine mới
+            // Nếu không có loop này: engine exit → game mất mạng mãi mãi
+            // ════════════════════════════════════════════════════════
+            while (running.get()) {
                 try {
-                    builder.addAllowedApplication("com.dts.freefireth")  // Free Fire OB (India/sea)
-                } catch (_: Exception) {}
-                try {
-                    builder.addAllowedApplication("com.dts.freefiremax") // Free Fire MAX
-                } catch (_: Exception) {}
-                // Fallback: nếu cả 2 đều fail (game chưa cài) → tunnel tất cả nhưng limited
-
-
-                val tun = builder.establish() ?: run {
-                    Log.e(TAG, "establish() returned null")
-                    running.set(false)
-                    broadcastState(false)
-                    return@launch
+                    doStartTunnel()
+                } catch (e: Exception) {
+                    Log.e(TAG, "Tunnel error: $e")
                 }
-                tunInterface = tun
 
-                // 2. Reset engine state
-                GameProtocolEngine.reset()
-
-                // 3. Khởi động PacketTunnelEngine
-                val engine = PacketTunnelEngine(
-                    vpn   = this@FreefireVpnService,
-                    tunIn = FileInputStream(tun.fileDescriptor),
-                    tunOut= FileOutputStream(tun.fileDescriptor),
-                )
-                tunnelEngine = engine
-
-                broadcastState(true)
-                Log.i(TAG, "TUN fd=${tun.fd} — Tunnel Engine running")
-
-                // 4. Chạy tunnel loop (blocking)
-                engine.start()
-
-            } catch (e: Exception) {
-                Log.e(TAG, "startVpn error: $e")
-                running.set(false)
-                broadcastState(false)
+                // Nếu vẫn running (stopVpn chưa gọi) → rebuild sau 1000ms
+                // 1000ms = 0x3e8 (C0026A1.smali line 6188 watchdog sleep)
+                if (running.get()) {
+                    Log.i(TAG, "Engine stopped, restarting in 1s…")
+                    try { Thread.sleep(1000) } catch (_: InterruptedException) {}
+                }
             }
+
+            broadcastState(false)
         }
     }
+
+    /** Mỗi lần build VPN interface + chạy engine (blocking đến khi engine thoát). */
+    private fun doStartTunnel() {
+        // 1. Build TUN interface
+        val builder = Builder()
+            .setSession("Foxy VPN")
+            .addAddress(VPN_ADDRESS, 24)
+            .addRoute("0.0.0.0", 0)
+            .addDnsServer(VPN_DNS)
+            .addDnsServer(VPN_DNS2)
+            .setMtu(MTU)
+            .setBlocking(true)   // Blocking mode cho tunnel engine
+
+        // ════════════════════════════════════════════════════════
+        // QUAN TRỌNG: CHỈ route traffic của game vào VPN tunnel
+        // (giống logic gốc Pigboy — addAllowedApplication)
+        // ════════════════════════════════════════════════════════
+        try { builder.addAllowedApplication("com.dts.freefireth") }  catch (_: Exception) {}
+        try { builder.addAllowedApplication("com.dts.freefiremax") } catch (_: Exception) {}
+
+        val tun = builder.establish() ?: run {
+            Log.e(TAG, "establish() returned null")
+            return
+        }
+
+        // Đóng TUN fd cũ trước khi gán fd mới
+        val oldTun = tunInterface
+        tunInterface = tun
+
+        try { oldTun?.close() } catch (_: Exception) {}
+
+        // 2. Reset engine state
+        GameProtocolEngine.reset()
+
+        // 3. Khởi động PacketTunnelEngine
+        val engine = PacketTunnelEngine(
+            vpn   = this@FreefireVpnService,
+            tunIn = java.io.FileInputStream(tun.fileDescriptor),
+            tunOut= java.io.FileOutputStream(tun.fileDescriptor),
+        )
+        tunnelEngine = engine
+
+        broadcastState(true)
+        Log.i(TAG, "TUN fd=${tun.fd} — Tunnel Engine running")
+
+        // 4. Chạy tunnel loop (blocking) — khi thoát: watchdog loop sẽ restart
+        engine.start()
+
+        Log.i(TAG, "engine.start() exited")
+    }
+
 
     private fun stopVpn() {
         Log.i(TAG, "Stopping VPN")
