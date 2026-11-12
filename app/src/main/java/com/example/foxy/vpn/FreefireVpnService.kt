@@ -76,8 +76,19 @@ class FreefireVpnService : VpnService() {
                     .setMtu(MTU)
                     .setBlocking(true)   // Blocking mode cho tunnel engine
 
-                // KHÔNG bypass game — packet game phải đi qua tunnel để ESP hoạt động
-                // (chỉ bypass app VPN của chính mình nếu có vòng lặp)
+                // ════════════════════════════════════════════════════════
+                // QUAN TRỌNG: CHỈ route traffic của game vào VPN tunnel
+                // (giống logic gốc Pigboy — addAllowedApplication)
+                // Nếu addRoute tất cả mà không lọc → proxy 100% traffic → đơ game!
+                // ════════════════════════════════════════════════════════
+                try {
+                    builder.addAllowedApplication("com.dts.freefireth")  // Free Fire OB (India/sea)
+                } catch (_: Exception) {}
+                try {
+                    builder.addAllowedApplication("com.dts.freefiremax") // Free Fire MAX
+                } catch (_: Exception) {}
+                // Fallback: nếu cả 2 đều fail (game chưa cài) → tunnel tất cả nhưng limited
+
 
                 val tun = builder.establish() ?: run {
                     Log.e(TAG, "establish() returned null")
