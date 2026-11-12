@@ -6,199 +6,210 @@ import android.view.View
 import kotlin.math.*
 
 /**
- * EspHudView — Vẽ ESP overlay đúng chuẩn Pigboy.
+ * EspHudView — Rewrite từ EspHudView.java gốc (Pigboy).
  *
- * Cấu trúc giống bản gốc:
- *   - Ô box (rectangle outline) quanh enemy
- *   - Line từ bottom-center màn hình → enemy
- *   - Label chỉ có khoảng cách (bỏ "PIG BOY ~ Main Account Safe")
- *   - Tất cả màu TRẮNG thay vì xanh lá
+ * Thay đổi duy nhất so với bản gốc:
+ *   - Line color: trắng thay vì xanh lá (0,255,0)
+ *   - Box color:  trắng thay vì xanh lá
+ *   - Label: bỏ "PIG BOY ~ Main Account Safe", chỉ hiện khoảng cách "Xm"
  *
- * Fix "lúc có lúc không": postInvalidate() liên tục + snapshot stable
+ * Logic drawing 100% từ code gốc:
+ *   - Line từ (W/2, dp(44)) → đầu entity   [gốc: 0.5f*width, dp(44)]
+ *   - Box: RoundRect, 0.46*height x height, corner dp(5)
+ *   - Health bar: bên phải box, dọc, xanh/đỏ
+ *   - invalidate() chỉ gọi khi espEnabled = true
  */
 class EspHudView(context: Context) : View(context) {
 
-    @Volatile var espEnabled    = false
+    // Các field giống bản gốc
+    @Volatile var espEnabled   = false
     @Volatile var smoothEnabled = true
+    @Volatile var boxAlpha   = 220  // 0-255 (gốc dùng 100→255)
+    @Volatile var lineAlpha  = 200
+    @Volatile var radarEnabled = false
 
-    // ─── Paint objects (tái sử dụng, không tạo trong onDraw) ──
+    private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val text  = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val poseFrames:   HashMap<Int, EspPoseInterpolator> = HashMap()
+    private val smoothFrames: HashMap<Int, FloatArray>          = HashMap()
+    private var lastFrame = 0L
 
-    private val boxPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        style = Paint.Style.STROKE
-        color = Color.WHITE
-    }
-    private val linePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        style = Paint.Style.STROKE
-        color = Color.argb(200, 255, 255, 255)
-    }
-    private val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        style = Paint.Style.FILL
-    }
-    private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color   = Color.WHITE
-        typeface = Typeface.DEFAULT_BOLD
-        textAlign = Paint.Align.CENTER
-    }
-    private val shadowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color   = Color.argb(160, 0, 0, 0)
-        style   = Paint.Style.FILL_AND_STROKE
-    }
-
-    private val interps  = HashMap<Int, EspPoseInterpolator>()
-    private var lastTime = 0L
-    private val tmpRect  = RectF()
-
-    // ─── Draw ─────────────────────────────────────────────────
+    // ─── onDraw: giống bản gốc (line 680-700 EspHudView.java) ───
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
+        val snap = EspEntityStore.snapshot()
+        if (snap.localPlayer != null) {
+            if (espEnabled) {
+                drawEsp(canvas, snap)
+            }
+            // radarEnabled: bỏ qua vì overlay riêng
+        } else {
+            // Không có local player → clear caches
+            smoothFrames.clear()
+            poseFrames.clear()
+            lastFrame = 0L
+        }
+        // Chỉ invalidate khi đang bật — ĐÚNG như bản gốc
+        if (espEnabled) {
+            invalidate()
+        }
+    }
 
-        // Luôn post lại dù esp tắt (để bật tức thì)
-        postInvalidateDelayed(16)
+    // ─── drawEsp: từ lines 81-166 EspHudView.java ────────────────
 
-        if (!espEnabled) return
-
-        val W = width.toFloat()
-        val H = height.toFloat()
+    private fun drawEsp(canvas: Canvas, snapshot: EspEntityStore.Snapshot) {
+        val W   = width.toFloat()
+        val H   = height.toFloat()
         if (W <= 0f || H <= 0f) return
 
-        val now   = System.currentTimeMillis()
-        val dt    = if (lastTime == 0L) 16L else (now - lastTime).coerceIn(1L, 100L)
-        lastTime  = now
+        val now = System.currentTimeMillis()
+        val dt  = if (lastFrame == 0L) 100L else now - lastFrame
+        lastFrame = now
 
-        val d     = resources.displayMetrics.density
-        val snap  = EspEntityStore.snapshot()
-        val lp    = snap.localPlayer ?: return
+        val seen = HashSet<Int>()
 
-        val seen  = HashSet<Int>()
+        for (entity in snapshot.entities) {
+            if (entity.dead) continue
 
-        for (entity in snap.entities) {
-            val dx = entity.x - lp.x
-            val dy = entity.y - lp.y
-            val dz = entity.z - lp.z
-            val dist = sqrt(dx*dx + dy*dy + dz*dz)
-            if (dist < 0.3f || dist > 500f) continue
+            val dx = entity.x - (snapshot.localPlayer?.x ?: 0f)
+            val dy = entity.y - (snapshot.localPlayer?.y ?: 0f)
+            val dz = entity.z - (snapshot.localPlayer?.z ?: 0f)
+            val dist = sqrt(dx * dx + dy * dy + dz * dz)
+            if (dist < 0.5f) continue
 
-            val interp = interps.getOrPut(entity.id) { EspPoseInterpolator() }
-            val pos    = interp.sample(entity.x, entity.y, entity.z, entity.updatedAt, now, smoothEnabled)
+            // Smooth interpolation (giống bản gốc)
+            val interp = poseFrames.getOrPut(entity.id) { EspPoseInterpolator() }
+            val pos = interp.sample(entity.x, entity.y, entity.z, entity.updatedAt, now, smoothEnabled)
 
-            // Project foot (y) và head (y+1.75m = chiều cao TB nhân vật)
-            val foot = PacketProjection.project(W, H, snap, pos[0], pos[1],        pos[2])
-            val head = PacketProjection.project(W, H, snap, pos[0], pos[1] + 1.75f, pos[2])
-
-            seen += entity.id
+            // Project foot và head (y+1.8f — giống bản gốc line 108)
+            val foot = PacketProjection.project(W, H, snapshot, pos[0], pos[1],        pos[2])
+            val head = PacketProjection.project(W, H, snapshot, pos[0], pos[1] + 1.8f,  pos[2])
 
             if (foot == null || head == null) {
-                // Ngoài màn → vẽ indicator ở rìa
-                drawEdgeArrow(canvas, snap, lp, entity, dist, W, H, d)
+                drawEdge(canvas, snapshot, entity, dist, W, H)
                 continue
             }
 
-            // ── Tính kích thước box (tỉ lệ theo chiều cao nhân vật) ──
-            val screenTop  = min(head[1], foot[1])
-            val screenBot  = max(head[1], foot[1])
-            val boxH = (screenBot - screenTop).coerceAtLeast(8f * d)
-            val boxW = boxH * 0.42f   // Tỉ lệ người (~6:14)
-            val cx   = (foot[0] + head[0]) * 0.5f
-
-            tmpRect.set(cx - boxW/2, screenTop, cx + boxW/2, screenBot)
-
-            // ── Lọc box quá nhỏ / quá to ──
-            if (boxH < 4f * d || boxH > H * 0.95f) continue
-
-            val alpha = if (dist < 100f) 230 else (230 * (500f - dist) / 400f).toInt().coerceIn(80, 230)
-
-            // ══ 1. VẼ LINE: bottom-center → đỉnh box (giống Pigboy) ══
-            linePaint.strokeWidth = 1.2f * d
-            linePaint.alpha = alpha
-            canvas.drawLine(W * 0.5f, H, cx, screenTop, linePaint)
-
-            // ══ 2. VẼ BOX (outline trắng) ══
-            boxPaint.strokeWidth = 1.5f * d
-            boxPaint.alpha = alpha
-            canvas.drawRect(tmpRect, boxPaint)
-
-            // ══ 3. VẼ HEALTH BAR (bên phải box, dọc) ══
-            val hpRatio  = entity.health.coerceIn(0, 200) / 200f
-            val barW     = 3f * d
-            val barLeft  = tmpRect.right + 2f * d
-            val barRight = barLeft + barW
-            // Background bar
-            fillPaint.color = Color.argb(120, 0, 0, 0)
-            canvas.drawRect(barLeft, tmpRect.top, barRight, tmpRect.bottom, fillPaint)
-            // HP bar color: xanh lá → vàng → đỏ
-            val hpColor = when {
-                hpRatio > 0.6f -> Color.rgb(80, 220, 120)
-                hpRatio > 0.3f -> Color.rgb(255, 200, 50)
-                else           -> Color.rgb(255, 80, 80)
+            // Check on-screen (giống line 111)
+            if (foot[0] < 0 || foot[0] > W || head[1] < 0 || foot[1] > H) {
+                drawEdge(canvas, snapshot, entity, dist, W, H)
+                continue
             }
-            fillPaint.color = Color.argb(200, Color.red(hpColor), Color.green(hpColor), Color.blue(hpColor))
-            val barTop = tmpRect.bottom - boxH * hpRatio
-            canvas.drawRect(barLeft, barTop, barRight, tmpRect.bottom, fillPaint)
 
-            // ══ 4. VẼ LABEL: chỉ khoảng cách (bỏ "PIG BOY ~ Main Account Safe") ══
-            textPaint.textSize = (10f * d).coerceIn(22f, 36f)
-            textPaint.alpha = alpha
+            seen += entity.id
+
+            // Smooth frames (giống line 115-120)
+            val rawPts = floatArrayOf(foot[0], foot[1], head[0], head[1])
+            val prevPts = smoothFrames[entity.id]
+            val pts = if (prevPts != null && smoothEnabled) {
+                val alpha = (dt / 50f).coerceIn(0f, 1f)
+                FloatArray(4) { i -> prevPts[i] + (rawPts[i] - prevPts[i]) * alpha }
+            } else rawPts
+            smoothFrames[entity.id] = pts
+
+            // Tính box (giống lines 121-127)
+            val centerX = (pts[0] + pts[2]) * 0.5f
+            val yTop    = min(pts[1], pts[3])
+            val yBot    = max(pts[1], pts[3])
+            val boxH    = clamp(yBot - yTop, 2f, 3f * H)
+            val boxW    = 0.46f * boxH
+            val centerY = (yTop + yBot) * 0.5f
+            val rectF   = RectF(centerX - boxW * 0.5f, centerY - boxH * 0.5f, centerX + boxW * 0.5f, centerY + boxH * 0.5f)
+
+            // ══ 1. VẼ BOX (màu TRẮNG thay vì xanh) — line 128-131 ══
+            paint.style = Paint.Style.STROKE
+            paint.strokeWidth = dp(1.4f)
+            paint.color = Color.argb(boxAlpha, 255, 255, 255)   // ← TRẮNG (gốc: 0,255,0)
+            canvas.drawRoundRect(rectF, dp(5f), dp(5f), paint)
+
+            // ══ 2. VẼ LINE từ (W/2, dp(44)) → head — line 132-134 ══
+            // QUAN TRỌNG: gốc là dp(44) từ TOP, không phải từ bottom!
+            paint.strokeWidth = dp(1f)
+            paint.color = Color.argb(lineAlpha, 255, 255, 255)  // ← TRẮNG (gốc: 0,255,0)
+            canvas.drawLine(0.5f * W, dp(44f), head[0], head[1], paint)
+
+            // ══ 3. VẼ HEALTH BAR (bên phải box, dọc) — lines 136-141 ══
+            val hpRatio = (entity.health.coerceIn(0, 200).toFloat() / 200f).coerceAtLeast(0f)
+            paint.style = Paint.Style.FILL
+            paint.color = Color.argb(150, 18, 18, 24)
+            canvas.drawRoundRect(
+                RectF(rectF.right - dp(5f), rectF.top, rectF.right - dp(2f), rectF.bottom),
+                dp(2f), dp(2f), paint
+            )
+            paint.color = if (hpRatio > 0.45f) Color.rgb(83, 222, 154) else Color.rgb(255, 105, 125)
+            val barTop = rectF.bottom - hpRatio * rectF.height()
+            canvas.drawRoundRect(
+                RectF(rectF.right - dp(5f), barTop, rectF.right - dp(2f), rectF.bottom),
+                dp(2f), dp(2f), paint
+            )
+
+            // ══ 4. VẼ LABEL: CHỈ KHOẢNG CÁCH — line 142-146 ══
+            // Gốc: "PIG BOY ~ Main Account Safe " + dist + "m"
+            // Của chúng ta: chỉ "${dist.toInt()}m"
+            text.color  = Color.argb(lineAlpha, 255, 255, 255)
+            text.textAlign = Paint.Align.CENTER
+            text.textSize = dp(10f)
             val label = "${dist.toInt()}m"
-            // Shadow để dễ đọc
-            shadowPaint.textSize = textPaint.textSize
-            shadowPaint.strokeWidth = 2.5f * d
-            canvas.drawText(label, cx, tmpRect.top - 4f * d, shadowPaint)
-            canvas.drawText(label, cx, tmpRect.top - 4f * d, textPaint)
-
-            // ══ 5. VẼ ĐẦU (chấm tròn nhỏ) — giống bản gốc ══
-            fillPaint.color = Color.argb(alpha, 255, 255, 255)
-            canvas.drawCircle(head[0], head[1], 3f * d, fillPaint)
+            canvas.drawText(label, centerX, rectF.top - dp(5f), text)
         }
 
-        // Dọn interpolators cũ
-        interps.keys.retainAll(seen)
+        // Dọn cache cũ (line 152-153)
+        poseFrames.keys.retainAll(seen)
+        smoothFrames.keys.retainAll(seen)
     }
 
-    // ─── Edge arrow khi enemy ngoài màn ──────────────────────
+    // ─── drawEdge — giống lines 64-79 ────────────────────────────
 
-    private fun drawEdgeArrow(
-        canvas: Canvas,
-        snap: EspEntityStore.Snapshot,
-        lp: EspEntityStore.Entity,
-        entity: EspEntityStore.Entity,
-        dist: Float, W: Float, H: Float, d: Float,
+    private fun drawEdge(
+        canvas: Canvas, snapshot: EspEntityStore.Snapshot,
+        entity: EspEntityStore.Entity, dist: Float, W: Float, H: Float,
     ) {
+        val lp = snapshot.localPlayer ?: return
         val relX = entity.x - lp.x
         val relZ = entity.z - lp.z
-        val sin  = sin(snap.yawRadians)
-        val cos  = cos(snap.yawRadians)
-        val rx   =  relX * cos - relZ * sin
-        val ry   =  relX * sin + relZ * cos
-        val angle = atan2(rx.toDouble(), ry.toDouble()).toFloat()
-        val margin = 20f * d
-        val ex = (W/2 + sin(angle) * (W/2 - margin)).coerceIn(margin, W - margin)
-        val ey = (H/2 - cos(angle) * (H/2 - margin)).coerceIn(margin, H - margin)
+        val angle = atan2(
+            (relX * cos(snapshot.yawRadians) - relZ * sin(snapshot.yawRadians)).toDouble(),
+            (relX * sin(snapshot.yawRadians) + relZ * cos(snapshot.yawRadians)).toDouble()
+        ).toFloat()
 
-        // Chấm đỏ nhỏ ở rìa + khoảng cách
-        fillPaint.color = Color.argb(200, 255, 80, 80)
-        canvas.drawCircle(ex, ey, 4f * d, fillPaint)
-        textPaint.textSize = 9f * d
-        textPaint.alpha = 180
-        canvas.drawText("${dist.toInt()}m", ex, ey + 12f * d, textPaint)
+        val ex = (W * 0.5f + sin(angle) * (W * 0.5f - dp(24f))).coerceIn(dp(8f), W - dp(8f))
+        val ey = (H * 0.5f - cos(angle) * (H * 0.5f - dp(24f))).coerceIn(dp(8f), H - dp(8f))
+
+        // Chấm đỏ nhỏ ở rìa (giống bản gốc: FILL circle màu đỏ)
+        paint.style = Paint.Style.FILL
+        paint.color = Color.argb(lineAlpha, 255, 0, 0)  // gốc: boxAlpha, 255, 0, 0
+        canvas.drawCircle(ex, ey, dp(3f), paint)
+
+        // Khoảng cách
+        text.textSize = dp(9f)
+        text.textAlign = Paint.Align.CENTER
+        text.color = Color.argb(lineAlpha, 255, 255, 255)
+        canvas.drawText("${dist.toInt()}m", ex, ey + dp(12f), text)
     }
+
+    // ─── Helpers ─────────────────────────────────────────────────
+
+    private fun dp(v: Float) = resources.displayMetrics.density * v
+    private fun clamp(v: Float, min: Float, max: Float) = v.coerceIn(min, max)
+
+    /** Gọi khi bật esp từ bên ngoài để restart drawing loop */
+    fun enable() { espEnabled = true; invalidate() }
+    fun disable() { espEnabled = false }
 }
 
-
-// ─────────────────────────────────────────────────────────────
-// EspPoseInterpolator — Nội suy vị trí giữa 2 keyframe
-// ─────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────
+// EspPoseInterpolator — Nội suy vị trí giữa 2 keyframe (giống gốc)
+// ─────────────────────────────────────────────────────────────────
 class EspPoseInterpolator {
-    private var x  = 0f; private var y  = 0f; private var z  = 0f
+    private var x = 0f; private var y = 0f; private var z = 0f
     private var px = 0f; private var py = 0f; private var pz = 0f
-    private var time     = 0L
-    private var prevTime = 0L
-    private var ready    = false
+    private var time = 0L; private var prevTime = 0L
+    private var ready = false
 
     fun sample(nx: Float, ny: Float, nz: Float, entityTs: Long, nowMs: Long, smooth: Boolean): FloatArray {
         val jump = (nx-x)*(nx-x) + (ny-y)*(ny-y) + (nz-z)*(nz-z) > 400f
         val stale = nowMs - time > 2000L
-
         if (!ready || jump || stale) {
             px = nx; py = ny; pz = nz; x = nx; y = ny; z = nz
             prevTime = entityTs; time = entityTs; ready = true
@@ -216,13 +227,12 @@ class EspPoseInterpolator {
     }
 }
 
-
-// ─────────────────────────────────────────────────────────────
-// PacketProjection — World 3D → Screen 2D
-// ─────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────
+// PacketProjection — Từ PacketProjection.java gốc
+// Camera TPP: back=3.0, side=0.35, eye=1.6, hfov=91.49°
+// ─────────────────────────────────────────────────────────────────
 object PacketProjection {
 
-    // TPP camera params (Free Fire)
     @Volatile private var camBack = 3.0f
     @Volatile private var camSide = 0.35f
     @Volatile private var camEye  = 1.6f
@@ -235,16 +245,11 @@ object PacketProjection {
         hFovDeg = fovDeg.coerceIn(50f, 120f)
     }
 
-    /**
-     * Project world point (wx,wy,wz) → screen (sx, sy, depth).
-     * Returns null nếu behind camera.
-     */
     fun project(W: Float, H: Float, snap: EspEntityStore.Snapshot,
                 wx: Float, wy: Float, wz: Float): FloatArray? {
         val lp = snap.localPlayer ?: return null
         if (W <= 0f || H <= 0f) return null
 
-        // Camera direction
         var dx = snap.dirX; var dy = snap.dirY; var dz = snap.dirZ
         if (dx == 0f && dy == 0f && dz == 0f) {
             dx = sin(snap.yawRadians); dy = 0f; dz = cos(snap.yawRadians)
@@ -253,37 +258,24 @@ object PacketProjection {
         if (dmag < 1e-5f) return null
         dx /= dmag; dy /= dmag; dz /= dmag
 
-        // Right vector (horizontal only)
         val hMag = sqrt(dx*dx + dz*dz)
         if (hMag < 1e-5f) return null
         val rx =  dz / hMag
         val rz = -dx / hMag
 
-        // Camera position (TPP offset)
         val cx = lp.x - camBack*dx + camSide*rx
         val cy = lp.y + camEye - camBack*dy
         val cz = lp.z - camBack*dz + camSide*rz
 
-        // Delta from camera to point
         val ex = wx - cx; val ey = wy - cy; val ez = wz - cz
-
-        // Depth = dot(forward, delta)
         val depth = dx*ex + dy*ey + dz*ez
         if (depth < 0.3f) return null
 
-        // Screen projection
         val fovHalfTan = tan(Math.toRadians(hFovDeg * 0.5)).toFloat()
-        val aspect     = W / H
+        val aspect = W / H
 
         val screenX = W * 0.5f + W * 0.5f * (rx*ex + rz*ez) / (depth * aspect * fovHalfTan)
-
-        // Up vector = forward × right
-        val ux = dy*rz - dz*(0f) // simplified (ry=0 for horizontal camera)
-        val uy = dz*rx - dx*rz   // actually: forward × right
-        val uz = dx*(0f) - dy*rx
-        // Simpler: up is just (0,1,0) rotated by pitch
-        // For Free Fire TPP, approximate up as world-up projected
-        val upDotE = ey - dy*(dx*ex + dy*ey + dz*ez) / (dx*dx + dy*dy + dz*dz)
+        val upDotE  = ey - dy*(dx*ex + dy*ey + dz*ez) / (dx*dx + dy*dy + dz*dz)
         val screenY = H * 0.5f - H * 0.5f * upDotE / (depth * fovHalfTan)
 
         if (!screenX.isFinite() || !screenY.isFinite()) return null

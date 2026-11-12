@@ -163,7 +163,7 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner, ViewM
                         onEagleEyeChange= { checked ->
                             // ═══ MẮT THẦN → bật/tắt EspHudView ═══
                             stateFlow.update { it.copy(eagleEyeEnabled = checked) }
-                            espHudView?.espEnabled = checked
+                            if (checked) espHudView?.enable() else espHudView?.disable()
                         },
                         widthScale      = widthScale,
                         heightScale     = heightScale,
