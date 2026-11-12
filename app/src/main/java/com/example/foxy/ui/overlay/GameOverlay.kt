@@ -6,6 +6,8 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -32,8 +34,10 @@ import androidx.compose.material.icons.rounded.PowerSettingsNew
 import androidx.compose.material.icons.rounded.Public
 import androidx.compose.material.icons.rounded.Remove
 import androidx.compose.material.icons.rounded.Settings
-import androidx.compose.material.icons.rounded.VerifiedUser
+import androidx.compose.material.icons.rounded.Visibility
 import androidx.compose.material3.Icon
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -51,8 +55,10 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.SpanStyle
@@ -70,6 +76,7 @@ import com.example.foxy.ui.home.SignalBars
 import com.example.foxy.ui.theme.VeilColors
 import com.example.foxy.ui.theme.VeilTheme
 import java.util.Locale
+import kotlin.math.roundToInt
 
 /** Tỉ lệ thu nhỏ mặc định của bảng (700x350 dp * 0.80 = 560x280 dp). */
 const val PANEL_SCALE = 0.80f
@@ -96,15 +103,14 @@ data class GameOverlayState(
 enum class OverlayTab(val icon: ImageVector, val label: String) {
     Home(Icons.Rounded.Home, "Trang chủ"),
     Boost(Icons.Rounded.Bolt, "Tăng tốc"),
-    Servers(Icons.Rounded.Public, "Mắt thần"),
-    Security(Icons.Rounded.VerifiedUser, "Bảo mật"),
+    EagleEye(Icons.Rounded.Visibility, "Mắt thần"),
     Settings(Icons.Rounded.Settings, "Cài đặt"),
 }
 
 /**
  * Bảng điều khiển VPN hiện trên game.
  * - expanded = false: chỉ hiện chip độ trễ nhỏ (chạm để mở, kéo để di chuyển).
- * - expanded = true: hiện bảng đầy đủ 700x350 dp theo tỉ lệ panelScale.
+ * - expanded = true: hiện bảng đầy đủ 700x350 dp theo tỉ lệ panelScale, widthScale, heightScale.
  */
 @Composable
 fun GameOverlay(
@@ -121,6 +127,9 @@ fun GameOverlay(
     boost: BoostState = BoostState(),
     onBoostChange: (BoostState) -> Unit = {},
     onEagleEyeChange: (Boolean) -> Unit = {},
+    widthScale: Float = 1f,
+    heightScale: Float = 1f,
+    onSizeChange: (Float, Float) -> Unit = { _, _ -> },
     modifier: Modifier = Modifier,
     panelScale: Float = PANEL_SCALE,
 ) {
@@ -129,11 +138,13 @@ fun GameOverlay(
         return
     }
     val d = LocalDensity.current
-    // Thu nhỏ cả dp lẫn sp theo panelScale và giữ kích thước chuẩn 700x350 để tránh bị WindowManager bóp ngang.
+    val panelW = (700f * widthScale).dp
+    val panelH = (350f * heightScale).dp
+    // Thu nhỏ cả dp lẫn sp theo panelScale và giữ kích thước chuẩn theo widthScale/heightScale.
     CompositionLocalProvider(LocalDensity provides Density(d.density * panelScale, d.fontScale)) {
         Row(
             modifier
-                .requiredSize(700.dp, 350.dp)
+                .requiredSize(panelW, panelH)
                 .clip(RoundedCornerShape(28.dp))
                 .background(Color(0xFF1C2A2D).copy(alpha = 0.96f))
                 .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(28.dp))
@@ -151,10 +162,8 @@ fun GameOverlay(
                 when (tab) {
                     OverlayTab.Home -> HomeContent(state, onDisconnect, onPriorityChange, onServerClick, onLanguageClick, content)
                     OverlayTab.Boost -> BoostContent(boost, onBoostChange, content)
-                    OverlayTab.Servers -> EagleEyeContent(state.eagleEyeEnabled, onEagleEyeChange, content)
-                    else -> Box(content, contentAlignment = Alignment.Center) {
-                        Text("${tab.label} · sắp có", color = Soft, fontSize = 14.sp)
-                    }
+                    OverlayTab.EagleEye -> EagleEyeContent(state.eagleEyeEnabled, onEagleEyeChange, content)
+                    OverlayTab.Settings -> SettingsContent(widthScale, heightScale, onSizeChange, content)
                 }
             }
         }
@@ -207,7 +216,7 @@ fun PingChip(pingMs: Int, onClick: () -> Unit, modifier: Modifier = Modifier) {
 private fun Rail(selected: OverlayTab, onSelect: (OverlayTab) -> Unit) {
     Column(
         Modifier.width(52.dp).fillMaxHeight().clip(RoundedCornerShape(20.dp)).background(Color.White.copy(alpha = 0.06f)).padding(6.dp),
-        verticalArrangement = Arrangement.SpaceBetween,
+        verticalArrangement = Arrangement.spacedBy(18.dp, Alignment.CenterVertically),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         OverlayTab.entries.forEach { t ->
@@ -389,19 +398,99 @@ private fun EagleEyeContent(enabled: Boolean, onToggle: (Boolean) -> Unit, modif
         Box(
             Modifier.weight(1f).fillMaxWidth().clip(RoundedCornerShape(18.dp))
                 .background(if (enabled) Color.Black.copy(alpha = 0.25f) else Color.White.copy(alpha = 0.04f))
-                .border(1.dp, Color.White.copy(alpha = if (enabled) 0.10f else 0.04f), RoundedCornerShape(18.dp))
-                .padding(6.dp),
+                .border(1.dp, Color.White.copy(alpha = if (enabled) 0.10f else 0.04f), RoundedCornerShape(18.dp)),
             contentAlignment = Alignment.Center,
         ) {
             Image(
                 painter = painterResource(R.drawable.eagle_eye_preview),
                 contentDescription = "Mắt thần",
-                contentScale = ContentScale.Fit,
+                contentScale = ContentScale.FillBounds,
                 alignment = Alignment.Center,
                 colorFilter = if (enabled) null else ColorFilter.colorMatrix(ColorMatrix().apply { setToSaturation(0f) }),
-                modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(12.dp)).alpha(if (enabled) 1f else 0.35f),
+                modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(18.dp)).alpha(if (enabled) 1f else 0.35f),
             )
         }
+    }
+}
+
+@Composable
+private fun SettingsContent(
+    widthScale: Float,
+    heightScale: Float,
+    onSizeChange: (Float, Float) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("KÍCH THƯỚC MENU", fontSize = 11.sp, letterSpacing = 0.8.sp, color = Soft)
+            Text(
+                "Đặt lại",
+                color = VeilColors.Accent,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(10.dp))
+                    .clickable(role = Role.Button) { onSizeChange(1f, 1f) }
+                    .padding(horizontal = 8.dp, vertical = 3.dp),
+            )
+        }
+        SizeSliderCard(
+            label = "Chiều ngang",
+            value = widthScale,
+            onValueChange = { onSizeChange(it, heightScale) },
+            modifier = Modifier.weight(1f).fillMaxWidth(),
+        )
+        SizeSliderCard(
+            label = "Chiều cao",
+            value = heightScale,
+            onValueChange = { onSizeChange(widthScale, it) },
+            modifier = Modifier.weight(1f).fillMaxWidth(),
+        )
+    }
+}
+
+@Composable
+private fun SizeSliderCard(
+    label: String,
+    value: Float,
+    onValueChange: (Float) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val view = LocalView.current
+    val pct = (value * 100f).roundToInt()
+    Column(
+        modifier
+            .clip(RoundedCornerShape(18.dp))
+            .background(CardBg)
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            Text(label, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+            Text("$pct%", color = VeilColors.Accent, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+        }
+        Slider(
+            value = value,
+            onValueChange = onValueChange,
+            valueRange = 0.75f..1.25f,
+            colors = SliderDefaults.colors(
+                thumbColor = VeilColors.Accent,
+                activeTrackColor = VeilColors.Accent,
+                inactiveTrackColor = Color.White.copy(alpha = 0.16f),
+            ),
+            modifier = Modifier
+                .fillMaxWidth()
+                .pointerInput(Unit) {
+                    awaitEachGesture {
+                        awaitFirstDown(requireUnconsumed = false)
+                        view.parent?.requestDisallowInterceptTouchEvent(true)
+                    }
+                },
+        )
     }
 }
 

@@ -61,6 +61,8 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner, ViewM
     private var overlayView: FrameLayout? = null
     private var expanded by mutableStateOf(false)
     private var panelScale by mutableFloatStateOf(PANEL_SCALE)
+    private var widthScale by mutableFloatStateOf(1f)
+    private var heightScale by mutableFloatStateOf(1f)
     private var tab by mutableStateOf(OverlayTab.Home)
     private var boost by mutableStateOf(BoostState())
 
@@ -129,6 +131,9 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner, ViewM
                         boost = boost,
                         onBoostChange = { boost = it },
                         onEagleEyeChange = { checked -> stateFlow.update { it.copy(eagleEyeEnabled = checked) } },
+                        widthScale = widthScale,
+                        heightScale = heightScale,
+                        onSizeChange = ::updatePanelSize,
                         panelScale = panelScale,
                     )
                 }
@@ -159,15 +164,26 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner, ViewM
         overlayView?.let { windowManager.updateViewLayout(it, params) }
     }
 
+    private fun updatePanelSize(newWidthScale: Float, newHeightScale: Float) {
+        widthScale = newWidthScale
+        heightScale = newHeightScale
+        if (expanded) {
+            applyWindowBounds(centerIfUnset = false)
+            overlayView?.let { windowManager.updateViewLayout(it, params) }
+        }
+    }
+
     private fun applyWindowBounds(centerIfUnset: Boolean) {
         val (screenW, screenH) = screenSizePx()
         if (expanded) {
             val d = resources.displayMetrics.density
-            val maxW = (screenW * 0.92f) / (700f * d)
-            val maxH = (screenH * 0.88f) / (350f * d)
+            val designW = 700f * widthScale
+            val designH = 350f * heightScale
+            val maxW = (screenW * 0.96f) / (designW * d)
+            val maxH = (screenH * 0.92f) / (designH * d)
             val scale = minOf(PANEL_SCALE, maxW, maxH).coerceAtLeast(0.42f)
-            val wPx = ceil(700f * d * scale).toInt()
-            val hPx = ceil(350f * d * scale).toInt()
+            val wPx = ceil(designW * d * scale).toInt()
+            val hPx = ceil(designH * d * scale).toInt()
             panelScale = scale
             params.width = wPx
             params.height = hPx
