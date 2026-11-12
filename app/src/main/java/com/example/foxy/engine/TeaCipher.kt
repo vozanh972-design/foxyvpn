@@ -15,7 +15,8 @@ object TeaCipher {
         var v1 = readIntLE(input, 4)
         var sum = 0
         repeat(16) {
-            sum -= DELTA
+            // Gốc: i -= 1640531527 = sum += DELTA (DELTA = -1640531527)
+            sum += DELTA
             v0 += ((v1 shl 4) + key[0]) xor (v1 + sum) xor ((v1 ushr 5) + key[1])
             v1 += ((v0 shl 4) + key[2]) xor (v0 + sum) xor ((v0 ushr 5) + key[3])
         }
@@ -26,11 +27,13 @@ object TeaCipher {
     fun decryptBlock(key: IntArray, input: ByteArray, output: ByteArray) {
         var v0 = readIntLE(input, 0)
         var v1 = readIntLE(input, 4)
-        var sum = (-DELTA) * 16
+        // Gốc: int i = -478700656 = DELTA * 16 (vì DELTA=-1640531527, DELTA*16 mod 2^32 = -478700656)
+        var sum = DELTA * 16
         repeat(16) {
             v1 -= ((v0 shl 4) + key[2]) xor (v0 + sum) xor ((v0 ushr 5) + key[3])
             v0 -= ((v1 shl 4) + key[0]) xor (v1 + sum) xor ((v1 ushr 5) + key[1])
-            sum += DELTA
+            // Gốc: i += 1640531527 = sum -= DELTA (vì DELTA=-1640531527)
+            sum -= DELTA
         }
         writeIntLE(output, 0, v0)
         writeIntLE(output, 4, v1)

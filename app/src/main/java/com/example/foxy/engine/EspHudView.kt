@@ -35,26 +35,36 @@ class EspHudView(context: Context) : View(context) {
     private val smoothFrames: HashMap<Int, FloatArray>          = HashMap()
     private var lastFrame = 0L
 
+    // Cache localPlayer cuối cùng biết — giúp ESP không tắt lúc chết/hồi sinh
+    @Volatile private var lastKnownLocalPlayer: EspEntityStore.Entity? = null
+
     // ─── onDraw: giống bản gốc (line 680-700 EspHudView.java) ───
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
         val snap = EspEntityStore.snapshot()
-        if (snap.localPlayer != null) {
-            if (espEnabled) {
-                drawEsp(canvas, snap)
-            }
-            // radarEnabled: bỏ qua vì overlay riêng
+
+        // Gốc: drawEsp khi localPlayer != null
+        // Ta thêm: dùng last known khi localPlayer tạm null (vd: lúc chết chờ hồi sinh)
+        val effectiveSnap = if (snap.localPlayer != null) {
+            lastKnownLocalPlayer = snap.localPlayer
+            snap
+        } else if (lastKnownLocalPlayer != null) {
+            snap.copy(localPlayer = lastKnownLocalPlayer)
         } else {
-            // Không có local player → clear caches
+            null
+        }
+
+        if (effectiveSnap != null) {
+            if (espEnabled) drawEsp(canvas, effectiveSnap)
+        } else {
+            // Không có localPlayer nào cả → clear caches (giống gốc)
             smoothFrames.clear()
             poseFrames.clear()
             lastFrame = 0L
         }
-        // Chỉ invalidate khi đang bật — ĐÚNG như bản gốc
-        if (espEnabled) {
-            invalidate()
-        }
+        // Chỉ invalidate khi đang bật — ĐÚNG như bản gốc (espEnabled || radarEnabled)
+        if (espEnabled) invalidate()
     }
 
     // ─── drawEsp: từ lines 81-166 EspHudView.java ────────────────

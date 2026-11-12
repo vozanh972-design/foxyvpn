@@ -54,10 +54,12 @@ object GameProtocolEngine {
                 i++
             }
 
-            // Method 2: binary struct [2B][4B len=16][16B key]
+            // Method 2: binary struct [2B][4B len=16 or 32][16B key] — giống gốc line 618
             for (k in 0..buf.size - 22) {
                 val len = readInt32BE(buf, k + 2)
                 if (len == 16 && k + 22 <= buf.size) addKey(buf.copyOfRange(k + 6, k + 22))
+                // Gốc ALSO checks len==32 (key vẫn 16 bytes tính từ offset +6)
+                if (len == 32 && k + 38 <= buf.size) addKey(buf.copyOfRange(k + 6, k + 22))
             }
 
             // Method 3: UDP header field order learning
