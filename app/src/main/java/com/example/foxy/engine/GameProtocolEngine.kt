@@ -1,7 +1,10 @@
 package com.example.foxy.engine
 
+import java.io.ByteArrayInputStream
+import java.io.ByteArrayOutputStream
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
+import java.util.zip.GZIPInputStream
 
 /**
  * GameProtocolEngine — Điều phối xử lý packet:
@@ -96,15 +99,59 @@ object GameProtocolEngine {
             NetworkFeatures.observe(header.command, outbound)
         }
 
-        // Direct ESP parse
-        var hits = VerifiedEspParser.parseAny(data, outbound)
+        // ── Case 1: Unencrypted (flags & 3 == 0) hoặc không parse được header ──
+        // Logic gốc (GameProtocolEngine.java line 540):
+        //   headerSize == 8 → parseAny(rawData)              [entity tại byte 8]
+        //   headerSize != 8 → parseAny(withEspHeader(body))  [cắt header + prepend 8 zeros]
+        var hits = 0
+        if (header == null || (header.flags and 3) == 0) {
+            hits = if (header == null || header.headerSize == 8) {
+                // Header đúng 8 bytes → parser đọc từ data[8] = byte đầu payload ✓
+                VerifiedEspParser.parseAny(data, outbound)
+            } else {
+                // Header không phải 8 bytes (ví dụ 10 bytes) → tách body rồi prepend 8 null bytes
+                val body = data.copyOfRange(header.headerSize, data.size)
+                val body2 = if (isGzip(body)) gunzip(body) ?: body else body
+                VerifiedEspParser.parseAny(withEspHeader(body2), outbound)
+            }
+        }
 
-        // Try decode + parse if encrypted
+        // ── Case 2: Encrypted → decrypt, gzip?, withEspHeader ──
+        // Logic gốc (line 541-547): parseAny(withEspHeader(decryptedBody), z)
         if (hits == 0 && header != null && (header.flags and 3) != 0) {
             val body = decodeBody(header, data)
-            if (body != null) hits = VerifiedEspParser.parseAny(body, outbound)
+            if (body != null) {
+                val body2 = if (isGzip(body)) gunzip(body) ?: body else body
+                hits = VerifiedEspParser.parseAny(withEspHeader(body2), outbound)
+            }
         }
     }
+
+    /** Prepend 8 null bytes trước body — giống withEspHeader() trong gốc */
+    private fun withEspHeader(body: ByteArray): ByteArray {
+        val result = ByteArray(body.size + 8)
+        System.arraycopy(body, 0, result, 8, body.size)
+        return result
+    }
+
+    /** Kiểm tra gzip magic bytes (0x1f, 0x8b) */
+    private fun isGzip(data: ByteArray) =
+        data.size >= 2 && (data[0].toInt() and 0xFF) == 31 && (data[1].toInt() and 0xFF) == 139
+
+    /** Decompress gzip, giới hạn 1MB như gốc */
+    private fun gunzip(data: ByteArray): ByteArray? = try {
+        val bos = ByteArrayOutputStream(maxOf(4096, data.size * 3))
+        GZIPInputStream(ByteArrayInputStream(data)).use { gz ->
+            val buf = ByteArray(2048)
+            while (true) {
+                val n = gz.read(buf)
+                if (n <= 0) break
+                bos.write(buf, 0, n)
+                if (bos.size() > 1_048_576) return null  // cap 1MB như gốc
+            }
+        }
+        bos.toByteArray()
+    } catch (e: Exception) { null }
 
     private fun decodeBody(header: ParsedHeader, data: ByteArray): ByteArray? {
         val bodyStart = header.headerSize
@@ -121,6 +168,7 @@ object GameProtocolEngine {
         }
         return null
     }
+
 
     fun getOrCreate(flowKey: String): UdpSessionParser {
         return sessions.getOrPut(flowKey) {

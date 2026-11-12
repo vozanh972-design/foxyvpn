@@ -24,8 +24,9 @@ class EspHudView(context: Context) : View(context) {
     // Các field giống bản gốc
     @Volatile var espEnabled   = false
     @Volatile var smoothEnabled = true
-    @Volatile var boxAlpha   = 220  // 0-255 (gốc dùng 100→255)
-    @Volatile var lineAlpha  = 200
+    // Alpha = 255 (fully opaque) — gốc dùng opacity(100) = min(255, round(100*2.55)) = 255
+    @Volatile var boxAlpha   = 255
+    @Volatile var lineAlpha  = 255
     @Volatile var radarEnabled = false
 
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)

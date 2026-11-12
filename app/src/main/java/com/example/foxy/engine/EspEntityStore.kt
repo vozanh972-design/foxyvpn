@@ -146,10 +146,10 @@ object EspEntityStore {
         direction   = Direction(0f, 0f, 1f, 0f)
     }
 
-    // validPos cua EspEntityStore: rong hon VerifiedEspParser (copy tu FULL_LOGIC)
-    // Cho phep x/z den 100000m, khong kiem Y
+    // validPos cua EspEntityStore — copy y chang tu EspEntityStore.java line 132:
+    // isNaN/isInfinite checks + abs < 100000 cho CA 3 toa do
     fun validPos(x: Float, y: Float, z: Float): Boolean {
-        return x.isFinite() && z.isFinite()
-            && abs(x) < 100000 && abs(z) < 100000
+        return x.isFinite() && y.isFinite() && z.isFinite()
+            && abs(x) < 100000 && abs(y) < 100000 && abs(z) < 100000
     }
 }
