@@ -32,6 +32,11 @@ data class HomeUiState(
     val downMbps: Double = 0.0,
     val upMbps: Double = 0.0,
     val needsVpnPermission: Boolean = false,
+    val userName: String = "Robert",
+    val serverName: String = "United States",
+    val serverHint: String = "Nhanh nhất hiện tại",
+    val serverCountryCode: String = "US",
+    val ipAddress: String = "254.759.36.54",
 )
 
 /**
@@ -90,9 +95,8 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
 
     fun onPowerClick() {
         when (_state.value.status) {
-            ConnectionStatus.Idle      -> requestConnect()
-            ConnectionStatus.Connected -> requestDisconnect()
-            ConnectionStatus.Connecting -> Unit
+            ConnectionStatus.Idle -> requestConnect()
+            ConnectionStatus.Connecting, ConnectionStatus.Connected -> requestDisconnect()
         }
     }
 
@@ -122,7 +126,13 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
         val s = _state.value
         val target = (if (s.isAuto) null else s.selected) ?: pickRandomFar(s.current)
 
-        _state.update { it.copy(status = ConnectionStatus.Connecting, current = target) }
+        _state.update {
+            it.withServerDisplay(if (s.isAuto) null else target).copy(
+                status = ConnectionStatus.Connecting,
+                current = target,
+                elapsedSeconds = 0,
+            )
+        }
 
         // Gửi Intent START giống Pigboy gọi startOrRestartTunnel()
         val intent = Intent(ctx, FreefireVpnService::class.java).apply {
@@ -200,7 +210,9 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
 
     fun selectServer(server: Server?) {
         val wasActive = _state.value.status != ConnectionStatus.Idle
-        _state.update { it.copy(isAuto = server == null, selected = server) }
+        _state.update {
+            it.withServerDisplay(server).copy(isAuto = server == null, selected = server)
+        }
         if (wasActive) {
             requestDisconnect()
             startVpnService()
@@ -243,11 +255,26 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
     private fun pickRandomFar(previous: Server?): Server =
         ServerRepository.far.filter { it != previous }.random()
 
+    private fun HomeUiState.withServerDisplay(server: Server?): HomeUiState = copy(
+        serverName = server?.country ?: "United States",
+        serverHint = server?.city ?: "Nhanh nhất hiện tại",
+        serverCountryCode = server?.let { COUNTRY_CODES[it.country] ?: "US" } ?: "US",
+    )
+
     override fun onCleared() {
         super.onCleared()
         try { getApplication<Application>().unregisterReceiver(vpnReceiver) } catch (_: Exception) {}
         connectTimeoutJob?.cancel()
         elapsedJob?.cancel()
         statsJob?.cancel()
+    }
+
+    private companion object {
+        val COUNTRY_CODES = mapOf(
+            "Singapore" to "SG", "Việt Nam" to "VN", "Nhật Bản" to "JP",
+            "Hàn Quốc" to "KR", "Hồng Kông" to "HK", "Thái Lan" to "TH",
+            "Úc" to "AU", "Hoa Kỳ" to "US", "Anh" to "GB",
+            "Đức" to "DE", "Brazil" to "BR",
+        )
     }
 }

@@ -1,14 +1,10 @@
 package com.example.foxy.ui.home
 
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -22,424 +18,296 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.Image
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.ArrowDownward
+import androidx.compose.material.icons.rounded.ArrowUpward
+import androidx.compose.material.icons.rounded.ChevronRight
+import androidx.compose.material.icons.rounded.Home
+import androidx.compose.material.icons.rounded.Notifications
+import androidx.compose.material.icons.rounded.Person
+import androidx.compose.material.icons.rounded.PowerSettingsNew
+import androidx.compose.material.icons.rounded.Public
+import androidx.compose.material.icons.rounded.WorkspacePremium
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.res.painterResource
-import com.example.foxy.R
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.example.foxy.data.Server
-import com.example.foxy.data.ServerRepository
-import com.example.foxy.ui.theme.FoxyColors
-import com.example.foxy.ui.theme.FoxyTheme
+import com.example.foxy.ui.theme.VeilColors as C
+import com.example.foxy.ui.theme.VeilTheme
 import java.util.Locale
-import android.content.Intent
-import android.content.ComponentName
 
-/** Màn chính, tự lấy trạng thái từ ViewModel. */
+enum class HomeTab(val label: String, val icon: ImageVector) {
+    Home("Trang chủ", Icons.Rounded.Home),
+    Servers("Máy chủ", Icons.Rounded.Public),
+    Premium("Premium", Icons.Rounded.WorkspacePremium),
+    Account("Tài khoản", Icons.Rounded.Person),
+}
+
+/** Điểm vào: gắn ViewModel vào màn hình Trang chủ. */
 @Composable
-fun HomeScreen(
-    onMenuClick: () -> Unit,
-    onLocationClick: () -> Unit,
+fun HomeRoute(
     viewModel: HomeViewModel = viewModel(),
+    onUpgradeClick: () -> Unit = {},
+    onNotificationClick: () -> Unit = {},
+    onServerClick: () -> Unit = {},
+    onTabSelected: (HomeTab) -> Unit = {},
 ) {
     val state by viewModel.state.collectAsState()
-    HomeContent(
+    HomeScreen(
         state = state,
         onPowerClick = viewModel::onPowerClick,
-        onMenuClick = onMenuClick,
-        onLocationClick = onLocationClick,
+        onUpgradeClick = onUpgradeClick,
+        onNotificationClick = onNotificationClick,
+        onServerClick = onServerClick,
+        onTabSelected = onTabSelected,
     )
 }
 
-/** Phiên bản không giữ trạng thái, dùng cho Preview và test. */
 @Composable
-fun HomeContent(
+fun HomeScreen(
     state: HomeUiState,
     onPowerClick: () -> Unit,
-    onMenuClick: () -> Unit,
-    onLocationClick: () -> Unit,
-) {
-    val anim = rememberGlobeAnim(state.status, state.current)
-
-    Box(
-        Modifier
-            .fillMaxSize()
-            .background(
-                Brush.verticalGradient(
-                    0f to FoxyColors.Violet2,
-                    0.45f to FoxyColors.Violet,
-                    1f to FoxyColors.VioletDeep,
-                ),
-            ),
-    ) {
-        GlobeCanvas(anim, ServerRepository.userLocation, state.current, Modifier.fillMaxSize())
-        TopBar(state, onMenuClick, Modifier.align(Alignment.TopCenter))
-        BottomPanel(state, onPowerClick, onLocationClick, Modifier.align(Alignment.BottomCenter))
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Thanh trên: nút 3 gạch + nhãn trạng thái
-// ---------------------------------------------------------------------------
-
-@Composable
-private fun TopBar(state: HomeUiState, onMenuClick: () -> Unit, modifier: Modifier = Modifier) {
-    val protected = state.status == ConnectionStatus.Connected
-    val chipText = if (protected) "Đang bảo vệ" else "Chưa được bảo vệ"
-
-    Row(
-        modifier
-            .fillMaxWidth()
-            .statusBarsPadding()
-            .padding(horizontal = 24.dp, vertical = 22.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Box(
-            Modifier
-                .size(44.dp)
-                .clip(CircleShape)
-                .background(FoxyColors.Glass)
-                .semantics { contentDescription = "Mở menu" }
-                .clickable(onClick = onMenuClick),
-            contentAlignment = Alignment.Center,
-        ) {
-            Column(
-                verticalArrangement = Arrangement.spacedBy(5.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                repeat(3) {
-                    Box(
-                        Modifier
-                            .width(20.dp)
-                            .height(2.5.dp)
-                            .clip(RoundedCornerShape(2.dp))
-                            .background(Color.White),
-                    )
-                }
-            }
-        }
-
-        Row(
-            Modifier
-                .clip(RoundedCornerShape(50))
-                .background(FoxyColors.Glass)
-                .padding(horizontal = 14.dp, vertical = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Box(
-                Modifier
-                    .size(8.dp)
-                    .clip(CircleShape)
-                    .background(if (protected) FoxyColors.DotOn else FoxyColors.DotOff),
-            )
-            Text(chipText, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-        }
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Bảng trắng phía dưới
-// ---------------------------------------------------------------------------
-
-@Composable
-private fun BottomPanel(
-    state: HomeUiState,
-    onPowerClick: () -> Unit,
-    onLocationClick: () -> Unit,
+    onUpgradeClick: () -> Unit,
+    onNotificationClick: () -> Unit,
+    onServerClick: () -> Unit,
+    onTabSelected: (HomeTab) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val caption = when (state.status) {
-        ConnectionStatus.Idle -> "Nhấn để kết nối"
-        ConnectionStatus.Connecting -> "Đang kết nối…"
-        ConnectionStatus.Connected -> "Đã kết nối · ${formatElapsed(state.elapsedSeconds)}"
-    }
-    val connected = state.status == ConnectionStatus.Connected
-
-    Box(modifier.fillMaxWidth()) {
+    val gradientEnd = with(LocalDensity.current) { 460.dp.toPx() }
+    Column(
+        modifier
+            .fillMaxSize()
+            .background(Brush.verticalGradient(listOf(C.HeaderTint, C.Background), startY = 0f, endY = gradientEnd))
+            .statusBarsPadding(),
+    ) {
+        Header(state.userName, onUpgradeClick, onNotificationClick)
+        StatusText(state, Modifier.padding(top = 14.dp))
+        PowerButton(state, onPowerClick, Modifier.align(Alignment.CenterHorizontally).padding(top = 6.dp, bottom = 8.dp))
         Surface(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 54.dp),
-            shape = RoundedCornerShape(topStart = 34.dp, topEnd = 34.dp),
-            color = FoxyColors.Sheet,
+            modifier = Modifier.weight(1f).fillMaxWidth(),
+            shape = RoundedCornerShape(topStart = 30.dp, topEnd = 30.dp),
+            color = Color.White,
+            shadowElevation = 8.dp,
         ) {
-            Column(
-                Modifier
-                    .navigationBarsPadding()
-                    .padding(start = 22.dp, end = 22.dp, top = 64.dp, bottom = 26.dp),
-            ) {
-                Text(
-                    caption,
-                    modifier = Modifier.fillMaxWidth(),
-                    textAlign = TextAlign.Center,
-                    color = FoxyColors.Ink,
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.Bold,
-                    style = TextStyle(fontFeatureSettings = "tnum"),
-                )
-                Spacer(Modifier.height(14.dp))
-                LocationCard(state, onLocationClick)
-                Spacer(Modifier.height(16.dp))
-                Row(Modifier.fillMaxWidth()) {
-                    StatItem(
-                        value = if (connected) formatMbps(state.downMbps) else "--",
-                        label = "Tải xuống Mb/s",
-                        modifier = Modifier.weight(1f),
-                    )
-                    Box(
-                        Modifier
-                            .align(Alignment.CenterVertically)
-                            .width(1.dp)
-                            .height(36.dp)
-                            .background(FoxyColors.Line),
-                    )
-                    StatItem(
-                        value = if (connected) formatMbps(state.upMbps) else "--",
-                        label = "Tải lên Mb/s",
-                        modifier = Modifier.weight(1f),
-                    )
+            Column(Modifier.padding(start = 24.dp, top = 20.dp, end = 24.dp).navigationBarsPadding().padding(bottom = 16.dp)) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    StatCard(Icons.Rounded.ArrowDownward, "Tải xuống", mbps(state.downMbps.toFloat()), C.StatDownload, Modifier.weight(1f))
+                    StatCard(Icons.Rounded.ArrowUpward, "Tải lên", mbps(state.upMbps.toFloat()), C.StatUpload, Modifier.weight(1f))
+                }
+                Spacer(Modifier.height(12.dp))
+                LocationCard(state, onServerClick)
+                Spacer(Modifier.weight(1f))
+                BottomNav(HomeTab.Home, onTabSelected)
+            }
+        }
+    }
+}
+
+@Composable
+private fun Header(userName: String, onUpgrade: () -> Unit, onBell: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 20.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Box(Modifier.size(40.dp).background(C.AccentTint, CircleShape), contentAlignment = Alignment.Center) {
+            Text(userName.take(1).uppercase(), color = C.AccentText, fontWeight = FontWeight.Bold)
+        }
+        Column {
+            Text("Xin chào", fontSize = 13.sp, color = C.Muted)
+            Text(userName, fontWeight = FontWeight.Bold, color = C.Ink)
+        }
+        Spacer(Modifier.weight(1f))
+        Surface(onClick = onUpgrade, shape = RoundedCornerShape(19.dp), color = Color.White, modifier = Modifier.height(38.dp)) {
+            Row(Modifier.padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Icon(Icons.Rounded.WorkspacePremium, null, Modifier.size(16.dp), tint = C.Ink)
+                Text("Nâng cấp", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = C.Ink)
+            }
+        }
+        Surface(onClick = onBell, shape = CircleShape, color = Color.White, modifier = Modifier.size(40.dp)) {
+            Box(contentAlignment = Alignment.Center) {
+                Icon(Icons.Rounded.Notifications, "Thông báo", Modifier.size(20.dp), tint = C.Ink)
+            }
+        }
+    }
+}
+
+@Composable
+private fun StatusText(state: HomeUiState, modifier: Modifier = Modifier) {
+    val (title, sub) = when (state.status) {
+        ConnectionStatus.Idle -> "Chưa kết nối" to "IP của bạn đang hiển thị"
+        ConnectionStatus.Connecting -> "Đang kết nối…" to state.serverName
+        ConnectionStatus.Connected -> state.serverName to "Đã kết nối · IP " + state.ipAddress
+    }
+    Column(modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(title, fontSize = 28.sp, fontWeight = FontWeight.Bold, color = C.Ink, textAlign = TextAlign.Center)
+        Text(sub, fontSize = 13.sp, color = C.Muted)
+    }
+}
+
+@Composable
+private fun PowerButton(state: HomeUiState, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    val connected = state.status == ConnectionStatus.Connected
+    val container by animateColorAsState(if (connected) C.Accent else Color.White, label = "powerBg")
+    val content = if (connected) C.Ink else C.Accent
+    Box(modifier.size(210.dp), contentAlignment = Alignment.Center) {
+        Box(Modifier.size(210.dp).background(Color.White.copy(alpha = 0.3f), CircleShape))
+        Box(Modifier.size(178.dp).background(Color.White.copy(alpha = 0.55f), CircleShape))
+        Surface(
+            onClick = onClick,
+            shape = CircleShape,
+            color = container,
+            shadowElevation = 12.dp,
+            modifier = Modifier.size(150.dp),
+        ) {
+            Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
+                when (state.status) {
+                    ConnectionStatus.Connecting -> {
+                        CircularProgressIndicator(Modifier.size(56.dp), color = C.Accent, strokeWidth = 3.dp)
+                        Text("Vui lòng đợi", fontSize = 13.sp, color = C.Muted, modifier = Modifier.padding(top = 8.dp))
+                    }
+                    ConnectionStatus.Connected -> {
+                        Icon(Icons.Rounded.PowerSettingsNew, "Ngắt kết nối", Modifier.size(40.dp), tint = content)
+                        Text("DỪNG", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = content)
+                        Text(clock(state.elapsedSeconds), fontSize = 16.sp, fontWeight = FontWeight.Bold, color = C.Ink)
+                    }
+                    ConnectionStatus.Idle -> {
+                        Icon(Icons.Rounded.PowerSettingsNew, "Kết nối", Modifier.size(46.dp), tint = content)
+                        Text("BẬT", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = C.Muted)
+                    }
                 }
             }
         }
-        PowerButton(state.status, onPowerClick, Modifier.align(Alignment.TopCenter))
+    }
+}
+
+@Composable
+private fun StatCard(icon: ImageVector, label: String, value: String, bg: Color, modifier: Modifier = Modifier) {
+    Column(modifier.clip(RoundedCornerShape(18.dp)).background(bg).padding(14.dp)) {
+        Box(Modifier.size(30.dp).background(Color.White, CircleShape), contentAlignment = Alignment.Center) {
+            Icon(icon, null, Modifier.size(16.dp), tint = C.AccentText)
+        }
+        Text(label, fontSize = 13.sp, color = C.Muted, modifier = Modifier.padding(top = 8.dp))
+        Text(value, fontWeight = FontWeight.Bold, color = C.Ink)
     }
 }
 
 @Composable
 private fun LocationCard(state: HomeUiState, onClick: () -> Unit) {
-    // ✅ Luôn hiển thị "Free Fire" bất kể trạng thái kết nối
-    // Không hiện quốc gia nào — chỉ "Free Fire"
-    val isConnectedOrConnecting = state.status != ConnectionStatus.Idle
-
-    var chipTapped by remember { mutableStateOf(false) }
-    val context = LocalContext.current
-
     Surface(
-        shape = RoundedCornerShape(20.dp),
+        onClick = onClick,
+        shape = RoundedCornerShape(18.dp),
         color = Color.White,
-        shadowElevation = 2.dp,
+        shadowElevation = 3.dp,
+        border = BorderStroke(1.dp, C.Border.copy(alpha = 0.6f)),
         modifier = Modifier.fillMaxWidth(),
     ) {
-        Row(
-            Modifier
-                .clickable(onClick = onClick)
-                .padding(horizontal = 14.dp, vertical = 12.dp),
-            horizontalArrangement = Arrangement.spacedBy(14.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            // ✅ Luôn dùng ảnh Free Fire — không bao giờ hiện cờ quốc gia
-            Image(
-                painter = painterResource(id = R.drawable.ic_freefire),
-                contentDescription = "Free Fire",
-                modifier = Modifier
-                    .size(42.dp)
-                    .clip(RoundedCornerShape(10.dp)),
-            )
-
+        Row(Modifier.padding(horizontal = 14.dp, vertical = 11.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            CountryFlag(state.serverCountryCode, 40.dp)
             Column(Modifier.weight(1f)) {
-                // ✅ Luôn "Free Fire"
-                Text(
-                    text = "Free Fire",
-                    color = FoxyColors.Ink,
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.SemiBold,
-                )
-                Text(
-                    text = when (state.status) {
-                        ConnectionStatus.Idle       -> "Tự động chọn máy chủ"
-                        ConnectionStatus.Connecting -> "Đang kết nối..."
-                        ConnectionStatus.Connected  -> "Đã kết nối"
-                    },
-                    color = FoxyColors.Muted,
-                    fontSize = 12.sp,
-                )
+                Text(state.serverName, fontWeight = FontWeight.Bold, color = C.Ink)
+                Text(state.serverHint, fontSize = 13.sp, color = C.Muted)
             }
-
-            // ✅ Chip luôn là "..." (không phải "Auto")
-            // Bấm → mở game Free Fire
-            Text(
-                text = if (chipTapped) "..." else "...",   // luôn "..."
-                modifier = Modifier
-                    .clip(RoundedCornerShape(50))
-                    .background(
-                        if (chipTapped) Color(0xFFFF4E00) else FoxyColors.PingChip
-                    )
-                    .padding(horizontal = 10.dp, vertical = 6.dp)
-                    .clickable {
-                        if (!chipTapped) {
-                            chipTapped = true
-                            // Mở Free Fire — giống Pigboy tự mở game
-                            try {
-                                val intent = Intent().apply {
-                                    component = ComponentName(
-                                        "com.dts.freefireth",
-                                        "com.dts.freefireth.FFMainActivity"
-                                    )
-                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                }
-                                context.startActivity(intent)
-                            } catch (e: Exception) {
-                                try {
-                                    val fallback = context.packageManager
-                                        .getLaunchIntentForPackage("com.dts.freefireth")
-                                    if (fallback != null) {
-                                        fallback.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                        context.startActivity(fallback)
-                                    }
-                                } catch (_: Exception) {}
-                            }
-                            android.os.Handler(android.os.Looper.getMainLooper())
-                                .postDelayed({ chipTapped = false }, 2000)
-                        }
-                    },
-                color = if (chipTapped) Color.White else FoxyColors.Violet2,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.SemiBold,
-            )
+            SignalBars(level = 3)
+            Icon(Icons.Rounded.ChevronRight, null, Modifier.size(20.dp), tint = C.Muted)
         }
     }
 }
 
-
 @Composable
-private fun StatItem(value: String, label: String, modifier: Modifier = Modifier) {
-    Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(
-            value,
-            color = FoxyColors.Ink,
-            fontSize = 17.sp,
-            fontWeight = FontWeight.SemiBold,
-            style = TextStyle(fontFeatureSettings = "tnum"),
-        )
-        Text(label, color = FoxyColors.Muted, fontSize = 11.sp)
+private fun SignalBars(level: Int) {
+    Row(Modifier.height(14.dp), verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+        listOf(5.dp, 9.dp, 14.dp).forEachIndexed { i, h ->
+            Box(Modifier.size(width = 3.dp, height = h).background(if (i < level) C.SignalOn else C.SignalOff, RoundedCornerShape(1.dp)))
+        }
     }
 }
 
-// ---------------------------------------------------------------------------
-// Nút nguồn
-// ---------------------------------------------------------------------------
-
+/** Cờ vẽ bằng Canvas cho vài nước. Nước khác: thay bằng ảnh cờ thật (drawable/Coil). */
 @Composable
-private fun PowerButton(status: ConnectionStatus, onClick: () -> Unit, modifier: Modifier = Modifier) {
-    val connected = status == ConnectionStatus.Connected
-    val connecting = status == ConnectionStatus.Connecting
-    val bg by animateColorAsState(
-        targetValue = if (connected) FoxyColors.Mint else FoxyColors.Sun,
-        animationSpec = tween(400),
-        label = "powerBg",
-    )
-    val beat by rememberInfiniteTransition(label = "beat").animateFloat(
-        initialValue = 1f,
-        targetValue = 0.92f,
-        animationSpec = infiniteRepeatable(tween(500, easing = LinearEasing), RepeatMode.Reverse),
-        label = "beatValue",
-    )
-
-    Box(
-        modifier
-            .size(108.dp)
-            .graphicsLayer {
-                val s = if (connecting) beat else 1f
-                scaleX = s
-                scaleY = s
+fun CountryFlag(code: String, size: Dp) {
+    val red = Color(0xFFC9504A); val blue = Color(0xFF3E5A8C)
+    Canvas(Modifier.size(size).clip(CircleShape).border(1.dp, C.Border, CircleShape)) {
+        val u = this.size.width / 36f
+        fun rect(c: Color, x: Float, y: Float, w: Float, h: Float) =
+            drawRect(c, Offset(x * u, y * u), Size(w * u, h * u))
+        when (code) {
+            "US" -> {
+                rect(Color.White, 0f, 0f, 36f, 36f)
+                listOf(0f, 9.2f, 18.4f, 27.6f).forEach { rect(red, 0f, it, 36f, 4.6f) }
+                rect(blue, 0f, 0f, 18f, 19f)
             }
-            .shadow(24.dp, CircleShape, ambientColor = bg, spotColor = bg)
-            .background(FoxyColors.Sheet, CircleShape)
-            .padding(8.dp)
-            .clip(CircleShape)
-            .background(bg)
-            .semantics { contentDescription = if (connected) "Ngắt kết nối VPN" else "Kết nối VPN" }
-            .clickable(onClick = onClick),
-        contentAlignment = Alignment.Center,
+            "DE" -> { rect(Color(0xFF2B2B2B), 0f, 0f, 36f, 12f); rect(red, 0f, 12f, 36f, 12f); rect(Color(0xFFE8B84A), 0f, 24f, 36f, 12f) }
+            "FR" -> { rect(blue, 0f, 0f, 12f, 36f); rect(Color.White, 12f, 0f, 12f, 36f); rect(red, 24f, 0f, 12f, 36f) }
+            "JP" -> { rect(Color.White, 0f, 0f, 36f, 36f); drawCircle(red, 8f * u, Offset(18f * u, 18f * u)) }
+            else -> rect(C.AccentTint, 0f, 0f, 36f, 36f)
+        }
+    }
+}
+
+@Composable
+private fun BottomNav(selected: HomeTab, onSelect: (HomeTab) -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(30.dp)).background(C.NavBar).padding(8.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
     ) {
-        PowerIcon(FoxyColors.Violet, Modifier.size(42.dp))
+        HomeTab.entries.forEach { tab ->
+            val on = tab == selected
+            Row(
+                Modifier
+                    .height(44.dp).widthIn(min = 44.dp)
+                    .clip(RoundedCornerShape(22.dp))
+                    .background(if (on) C.Background else Color.Transparent)
+                    .clickable(role = Role.Tab) { onSelect(tab) }
+                    .padding(horizontal = if (on) 18.dp else 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally),
+            ) {
+                Icon(tab.icon, tab.label, Modifier.size(20.dp), tint = if (on) C.Ink else C.NavInactive)
+                if (on) Text(tab.label, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = C.Ink)
+            }
+        }
     }
 }
 
-@Composable
-private fun PowerIcon(color: Color, modifier: Modifier = Modifier) {
-    Canvas(modifier) {
-        val w = size.minDimension
-        val stroke = Stroke(width = w * 2.6f / 24f, cap = StrokeCap.Round)
-        // Cung tròn hở phía trên
-        drawArc(
-            color = color,
-            startAngle = -42.4f,
-            sweepAngle = 264.8f,
-            useCenter = false,
-            topLeft = Offset(w * 4f / 24f, w * 4f / 24f),
-            size = Size(w * 16f / 24f, w * 16f / 24f),
-            style = stroke,
-        )
-        // Vạch đứng ở giữa
-        drawLine(color, Offset(w / 2f, w * 3f / 24f), Offset(w / 2f, w * 11f / 24f), stroke.width, StrokeCap.Round)
-    }
-}
+private fun mbps(v: Float) =
+    if (v == 0f) "0 Mb/s" else String.format(Locale.forLanguageTag("vi"), "%.1f Mb/s", v)
 
-// ---------------------------------------------------------------------------
-// Tiện ích
-// ---------------------------------------------------------------------------
+private fun clock(s: Long) = String.format(Locale.US, "%02d:%02d:%02d", s / 3600, s % 3600 / 60, s % 60)
 
-private fun formatElapsed(totalSeconds: Long): String =
-    String.format(Locale.US, "%02d:%02d:%02d", totalSeconds / 3600, totalSeconds / 60 % 60, totalSeconds % 60)
+@Preview(showBackground = true, heightDp = 844, widthDp = 390)
+@Composable private fun PreviewDisconnected() = VeilTheme { HomeScreen(HomeUiState(), {}, {}, {}, {}, {}) }
 
-private fun formatMbps(v: Double): String = String.format(Locale.US, "%.1f", v)
+@Preview(showBackground = true, heightDp = 844, widthDp = 390)
+@Composable private fun PreviewConnecting() = VeilTheme { HomeScreen(HomeUiState(status = ConnectionStatus.Connecting), {}, {}, {}, {}, {}) }
 
-// ---------------------------------------------------------------------------
-// Preview
-// ---------------------------------------------------------------------------
-
-@Preview(showBackground = true, widthDp = 390, heightDp = 780)
-@Composable
-private fun HomeIdlePreview() {
-    FoxyTheme { HomeContent(HomeUiState(), {}, {}, {}) }
-}
-
-@Preview(showBackground = true, widthDp = 390, heightDp = 780)
-@Composable
-private fun HomeConnectedPreview() {
-    FoxyTheme {
-        HomeContent(
-            HomeUiState(
-                status = ConnectionStatus.Connected,
-                current = ServerRepository.all[7],
-                elapsedSeconds = 12,
-                downMbps = 90.1,
-                upMbps = 34.4,
-            ),
-            {}, {}, {},
-        )
-    }
+@Preview(showBackground = true, heightDp = 844, widthDp = 390)
+@Composable private fun PreviewConnected() = VeilTheme {
+    HomeScreen(
+        HomeUiState(status = ConnectionStatus.Connected, downMbps = 13.5, upMbps = 15.5, elapsedSeconds = 2720),
+        {}, {}, {}, {}, {},
+    )
 }
