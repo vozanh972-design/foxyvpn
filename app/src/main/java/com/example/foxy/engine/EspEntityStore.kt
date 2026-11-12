@@ -1,53 +1,66 @@
 package com.example.foxy.engine
 
-import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.atomic.AtomicReference
 import kotlin.math.abs
+import kotlin.math.atan2
+import kotlin.math.cos
+import kotlin.math.sin
 import kotlin.math.sqrt
+import java.util.concurrent.ConcurrentHashMap
 
 /**
- * EspEntityStore — Lưu trữ vị trí tất cả entities trong game.
- * Cập nhật từ VerifiedEspParser, đọc từ EspHudView.
+ * EspEntityStore — Copy y chang tu FULL_LOGIC/03_ESP_DETECT.java (phan EspEntityStore)
+ * TTL: 15s entities, 60s local player
  */
 object EspEntityStore {
 
-    private const val ENTITY_TTL_MS = 30_000L   // 30s — tránh entity biến mất sớm
-    private const val LOCAL_TTL_MS  = 60_000L
+    const val ENTITY_TTL_MS = 15_000L   // 15s → stale entity (goc la 15_000)
+    const val LOCAL_TTL_MS  = 60_000L   // 60s → stale local
 
+    private val entities    = ConcurrentHashMap<Int, Entity>()
+    @Volatile private var localPlayer: Entity? = null
+    @Volatile private var direction: Direction  = Direction(0f, 0f, 1f, 0f)
+
+    // ─── Entity record ────────────────────────────────────────
     data class Entity(
         val id:        Int,
-        val x:         Float,   // World X (meters)
-        val y:         Float,   // World Y (height, meters)
-        val z:         Float,   // World Z (meters)
-        val vx:        Float = 0f,  // Velocity X (m/s)
-        val vy:        Float = 0f,
-        val vz:        Float = 0f,
-        val health:    Int   = 200,
-        val team:      Int   = 0,
-        val name:      String = "",
-        val dead:      Boolean = false,
-        val updatedAt: Long = System.currentTimeMillis(),
+        val x:         Float,
+        val y:         Float,
+        val z:         Float,
+        val vx:        Float     = 0f,
+        val vy:        Float     = 0f,
+        val vz:        Float     = 0f,
+        val updatedAt: Long      = 0L,
+        val name:      String    = "",
+        val team:      Int       = 0,
+        val health:    Int       = 200,
+        val dead:      Boolean   = false,
     ) {
+        // Tinh velocity tu diff position / diff time
         fun withPosition(nx: Float, ny: Float, nz: Float, ts: Long): Entity {
-            val dt = ((ts - updatedAt) / 1000f).coerceAtLeast(0.001f)
+            val dt = maxOf(0.001f, (ts - updatedAt) / 1000f)
             return copy(
                 x = nx, y = ny, z = nz,
                 vx = (nx - x) / dt,
                 vy = (ny - y) / dt,
                 vz = (nz - z) / dt,
-                dead = false,
                 updatedAt = ts,
+                // Neu truoc do dead → reset HP (respawn)
+                health = if (dead) 200 else health,
+                dead = false
             )
+        }
+        fun withTeam(t: Int)   = copy(team = t)
+        fun withName(n: String) = copy(name = n)
+        fun withDamage(dmg: Int): Entity {
+            val hp = maxOf(0, health - dmg)
+            return copy(health = hp, dead = hp <= 0)
         }
     }
 
-    data class Direction(
-        val x: Float = 0f,
-        val y: Float = 0f,
-        val z: Float = 1f,
-        val yaw: Float = 0f,   // atan2(x, z)
-    )
+    // ─── Direction: camera look vector ───────────────────────
+    data class Direction(val x: Float, val y: Float, val z: Float, val yaw: Float)
 
+    // ─── Snapshot cho rendering ───────────────────────────────
     data class Snapshot(
         val localPlayer: Entity?,
         val entities:    List<Entity>,
@@ -57,75 +70,72 @@ object EspEntityStore {
         val dirZ:        Float,
     )
 
-    private val entities  = ConcurrentHashMap<Int, Entity>()
-    @Volatile private var localPlayer: Entity? = null
-    @Volatile private var direction = Direction()
-
-    // ─── Update ───────────────────────────────────────────────
-
+    // ─── Update entity remote ─────────────────────────────────
     fun updateEntity(id: Int, x: Float, y: Float, z: Float) {
-        if (id <= 0 || id > 127) return
+        if (id <= 0 || !validPos(x, y, z)) return
         val lp = localPlayer
         if (lp != null && lp.id == id) { updateLocal(id, x, y, z); return }
         val ts = System.currentTimeMillis()
         entities.compute(id) { _, existing ->
-            if (existing == null) Entity(id, x, y, z, updatedAt = ts)
-            else existing.withPosition(x, y, z, ts)
+            existing?.withPosition(x, y, z, ts)
+                ?: Entity(id, x, y, z, updatedAt = ts, name = "Entity$id")
         }
     }
 
+    // ─── Update local player ──────────────────────────────────
     fun updateLocal(id: Int, x: Float, y: Float, z: Float) {
-        val ts = System.currentTimeMillis()
+        if (!validPos(x, y, z)) return
+        val ts   = System.currentTimeMillis()
         val prev = localPlayer
-        val dt = if (prev == null) 0.001f else ((ts - prev.updatedAt) / 1000f).coerceAtLeast(0.001f)
+        val dt   = if (prev == null) 0.001f else maxOf(0.001f, (ts - prev.updatedAt) / 1000f)
         localPlayer = Entity(
-            id = id, x = x, y = y, z = z,
-            vx = if (prev == null) 0f else (x - prev.x) / dt,
-            vy = if (prev == null) 0f else (y - prev.y) / dt,
-            vz = if (prev == null) 0f else (z - prev.z) / dt,
-            health = prev?.health ?: 200,
-            team   = prev?.team   ?: 0,
-            name   = prev?.name   ?: "Me",
-            dead   = false,
+            id        = id,
+            x = x, y = y, z = z,
+            vx        = if (prev == null) 0f else (x - prev.x) / dt,
+            vy        = if (prev == null) 0f else (y - prev.y) / dt,
+            vz        = if (prev == null) 0f else (z - prev.z) / dt,
             updatedAt = ts,
+            name      = prev?.name   ?: "Me",
+            team      = prev?.team   ?: 0,
+            health    = if (prev == null) 200 else if (prev.dead) 200 else prev.health,
+            dead      = false
         )
-        if (id > 0) entities.remove(id)
+        if (id > 0) entities.remove(id)  // Local player khong hien trong entities
     }
 
+    // ─── Update camera direction ──────────────────────────────
     fun updateDirection(dx: Float, dy: Float, dz: Float) {
         val mag = sqrt(dx * dx + dy * dy + dz * dz)
-        if (mag < 1e-4f) return
-        direction = Direction(dx / mag, dy / mag, dz / mag, Math.atan2(dx.toDouble(), dz.toDouble()).toFloat())
+        if (mag > 0.001f) {
+            direction = Direction(dx / mag, dy / mag, dz / mag,
+                atan2(dx.toDouble(), dz.toDouble()).toFloat())
+        }
     }
 
     fun updateYaw(yaw: Float) {
         if (!yaw.isFinite()) return
-        direction = Direction(Math.sin(yaw.toDouble()).toFloat(), 0f, Math.cos(yaw.toDouble()).toFloat(), yaw)
+        direction = Direction(sin(yaw).toFloat(), 0f, cos(yaw).toFloat(), yaw)
     }
 
-    fun updateTeam(id: Int, team: Int) { entities.computeIfPresent(id) { _, e -> e.copy(team = team) } }
-    fun updateName(id: Int, name: String) { entities.computeIfPresent(id) { _, e -> e.copy(name = name) } }
-    fun applyDamage(id: Int, damage: Int) {
-        entities.computeIfPresent(id) { _, e ->
-            val hp = (e.health - damage).coerceAtLeast(0)
-            e.copy(health = hp, dead = hp <= 0)
-        }
-    }
-
-    fun localEntityId(): Int = localPlayer?.id ?: -1
+    fun updateTeam  (id: Int, team: Int)   { entities.computeIfPresent(id) { _, e -> e.withTeam(team) } }
+    fun updateName  (id: Int, name: String){ entities.computeIfPresent(id) { _, e -> e.withName(name) } }
+    fun applyDamage (id: Int, damage: Int) { entities.computeIfPresent(id) { _, e -> e.withDamage(damage) } }
+    fun localEntityId(): Int               = localPlayer?.id ?: -1
 
     // ─── Snapshot cho rendering ───────────────────────────────
-
+    // Copy y chang tu FULL_LOGIC: loc dead entities, 15s TTL
     fun snapshot(): Snapshot {
-        val now = System.currentTimeMillis()
-        val lp = localPlayer?.takeIf { now - it.updatedAt < LOCAL_TTL_MS }
+        val now  = System.currentTimeMillis()
+        val lp   = localPlayer?.takeIf { now - it.updatedAt < LOCAL_TTL_MS }
+
         val alive = mutableListOf<Entity>()
         val stale = mutableListOf<Int>()
         for ((id, e) in entities) {
             if (now - e.updatedAt > ENTITY_TTL_MS) stale += id
-            else alive += e   // Bao gồm cả dead (knocked) — user muốn thấy tất cả
+            else if (!e.dead) alive += e  // Chi hien entities con song (goc)
         }
         stale.forEach { entities.remove(it) }
+
         val dir = direction
         return Snapshot(lp, alive, dir.yaw, dir.x, dir.y, dir.z)
     }
@@ -133,6 +143,13 @@ object EspEntityStore {
     fun reset() {
         entities.clear()
         localPlayer = null
-        direction = Direction()
+        direction   = Direction(0f, 0f, 1f, 0f)
+    }
+
+    // validPos cua EspEntityStore: rong hon VerifiedEspParser (copy tu FULL_LOGIC)
+    // Cho phep x/z den 100000m, khong kiem Y
+    fun validPos(x: Float, y: Float, z: Float): Boolean {
+        return x.isFinite() && z.isFinite()
+            && abs(x) < 100000 && abs(z) < 100000
     }
 }

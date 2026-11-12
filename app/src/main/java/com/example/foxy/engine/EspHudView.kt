@@ -200,32 +200,61 @@ class EspHudView(context: Context) : View(context) {
 
 // ─────────────────────────────────────────────────────────────────
 // EspPoseInterpolator — Nội suy vị trí giữa 2 keyframe (giống gốc)
-// ─────────────────────────────────────────────────────────────────
+// EspPoseInterpolator — Copy y chang tu FULL_LOGIC/04_ESP_RENDER.java
 class EspPoseInterpolator {
     private var x = 0f; private var y = 0f; private var z = 0f
     private var px = 0f; private var py = 0f; private var pz = 0f
-    private var time = 0L; private var prevTime = 0L
+    private var time = 0L; private var previousTime = 0L
     private var ready = false
 
-    fun sample(nx: Float, ny: Float, nz: Float, entityTs: Long, nowMs: Long, smooth: Boolean): FloatArray {
-        val jump = (nx-x)*(nx-x) + (ny-y)*(ny-y) + (nz-z)*(nz-z) > 400f
-        val stale = nowMs - time > 2000L
-        if (!ready || jump || stale) {
-            px = nx; py = ny; pz = nz; x = nx; y = ny; z = nz
-            prevTime = entityTs; time = entityTs; ready = true
-            return floatArrayOf(nx, ny, nz)
+    fun sample(newX: Float, newY: Float, newZ: Float,
+               entityTime: Long, now: Long, smooth: Boolean): FloatArray {
+
+        // === RESET CONDITIONS (copy tu FULL_LOGIC) ===
+        val shouldReset = !ready
+            || entityTime < this.time
+            || (now - this.time) > 1000L           // Gap > 1 giay (entity mat tich)
+            || dist2(newX-x, newY-y, newZ-z) > 25f // Jump > 5 met (goc: 25f)
+
+        if (shouldReset) {
+            px = newX; x = newX
+            py = newY; y = newY
+            pz = newZ; z = newZ
+            previousTime = entityTime; time = entityTime
+            ready = true
+            return floatArrayOf(newX, newY, newZ)
         }
-        if (entityTs > time) {
-            px = x; py = y; pz = z; prevTime = time
-            x = nx; y = ny; z = nz; time = entityTs
+
+        // === UPDATE KEYFRAME ===
+        if (entityTime > this.time) {
+            px = x; py = y; pz = z; previousTime = this.time
+            x = newX; y = newY; z = newZ; this.time = entityTime
         }
-        val dt = (time - prevTime).coerceIn(1L, 500L)
-        val lag = if (smooth) 80L else 0L
-        val t   = ((nowMs - lag - prevTime).toFloat() / dt).coerceIn(0f, 1.2f)
-        val f   = if (smooth) t * t * (3f - 2f * t) else t  // smoothstep
-        return floatArrayOf(px + (x-px)*f, py + (y-py)*f, pz + (z-pz)*f)
+
+        // === INTERPOLATE ===
+        val dt = this.time - this.previousTime
+        if (dt <= 0 || dt > 250L) {
+            return floatArrayOf(this.x, this.y, this.z)
+        }
+
+        // Delay offset: smooth=100ms, linear=80ms (copy tu FULL_LOGIC)
+        val offset = if (smooth) 100L else 80L
+        var t = (now - offset - this.previousTime).toFloat() / dt.toFloat()
+        t = t.coerceIn(0f, 1f)  // Clamp [0,1] nhu FULL_LOGIC
+
+        // Smooth-step hoac linear
+        val f = if (smooth) (3f - 2f * t) * t * t else t
+
+        return floatArrayOf(
+            px + (x - px) * f,
+            py + (y - py) * f,
+            pz + (z - pz) * f
+        )
     }
+
+    private fun dist2(dx: Float, dy: Float, dz: Float) = dx*dx + dy*dy + dz*dz
 }
+
 
 // ─────────────────────────────────────────────────────────────────
 // PacketProjection — Từ PacketProjection.java gốc
