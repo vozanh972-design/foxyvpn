@@ -111,7 +111,6 @@ fun GameOverlay(
     onTabSelected: (OverlayTab) -> Unit = {},
     boost: BoostState = BoostState(),
     onBoostChange: (BoostState) -> Unit = {},
-    onMeasure: () -> Unit = {},
     modifier: Modifier = Modifier,
     panelScale: Float = PANEL_SCALE,
 ) {
@@ -141,7 +140,7 @@ fun GameOverlay(
                 val content = Modifier.weight(1f).fillMaxWidth()
                 when (tab) {
                     OverlayTab.Home -> HomeContent(state, onDisconnect, onPriorityChange, onServerClick, onLanguageClick, content)
-                    OverlayTab.Boost -> BoostContent(boost, onBoostChange, onMeasure, content)
+                    OverlayTab.Boost -> BoostContent(boost, onBoostChange, content)
                     else -> Box(content, contentAlignment = Alignment.Center) {
                         Text("${tab.label} · sắp có", color = Soft, fontSize = 14.sp)
                     }
