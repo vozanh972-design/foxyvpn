@@ -11,7 +11,7 @@ import kotlin.math.sqrt
  */
 object EspEntityStore {
 
-    private const val ENTITY_TTL_MS = 15_000L
+    private const val ENTITY_TTL_MS = 30_000L   // 30s — tránh entity biến mất sớm
     private const val LOCAL_TTL_MS  = 60_000L
 
     data class Entity(

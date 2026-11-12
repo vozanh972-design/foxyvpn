@@ -6,132 +6,163 @@ import android.view.View
 import kotlin.math.*
 
 /**
- * EspHudView — Custom Android View vẽ ESP overlay.
+ * EspHudView — Vẽ ESP overlay đúng chuẩn Pigboy.
  *
- * Thay đổi so với Pigboy gốc:
- *   - Line color: TRẮNG thay vì xanh lá
- *   - Bỏ watermark "PIG BOY ~ Main Account Safe"
- *   - Tên feature: "Mắt thần"
+ * Cấu trúc giống bản gốc:
+ *   - Ô box (rectangle outline) quanh enemy
+ *   - Line từ bottom-center màn hình → enemy
+ *   - Label chỉ có khoảng cách (bỏ "PIG BOY ~ Main Account Safe")
+ *   - Tất cả màu TRẮNG thay vì xanh lá
+ *
+ * Fix "lúc có lúc không": postInvalidate() liên tục + snapshot stable
  */
 class EspHudView(context: Context) : View(context) {
 
-    // Settings (set từ OverlayService)
-    @Volatile var espEnabled   = false
+    @Volatile var espEnabled    = false
     @Volatile var smoothEnabled = true
 
-    private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+    // ─── Paint objects (tái sử dụng, không tạo trong onDraw) ──
+
+    private val boxPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        color = Color.WHITE
+    }
+    private val linePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        color = Color.argb(200, 255, 255, 255)
+    }
+    private val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.FILL
+    }
     private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        typeface = Typeface.MONOSPACE
+        color   = Color.WHITE
+        typeface = Typeface.DEFAULT_BOLD
         textAlign = Paint.Align.CENTER
     }
+    private val shadowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color   = Color.argb(160, 0, 0, 0)
+        style   = Paint.Style.FILL_AND_STROKE
+    }
 
-    private val poseFrames   = HashMap<Int, EspPoseInterpolator>()
-    private val smoothFrames = HashMap<Int, FloatArray>()
-    private var lastFrame    = 0L
+    private val interps  = HashMap<Int, EspPoseInterpolator>()
+    private var lastTime = 0L
+    private val tmpRect  = RectF()
+
+    // ─── Draw ─────────────────────────────────────────────────
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
-        if (!espEnabled) {
-            postInvalidateDelayed(16)
-            return
-        }
+
+        // Luôn post lại dù esp tắt (để bật tức thì)
+        postInvalidateDelayed(16)
+
+        if (!espEnabled) return
+
         val W = width.toFloat()
         val H = height.toFloat()
-        if (W <= 0 || H <= 0) { postInvalidateDelayed(16); return }
+        if (W <= 0f || H <= 0f) return
 
-        val now = System.currentTimeMillis()
-        val frameDt = if (lastFrame == 0L) 100L else now - lastFrame
-        lastFrame = now
+        val now   = System.currentTimeMillis()
+        val dt    = if (lastTime == 0L) 16L else (now - lastTime).coerceIn(1L, 100L)
+        lastTime  = now
 
-        val snap = EspEntityStore.snapshot()
-        drawEsp(canvas, snap, W, H, now, frameDt)
+        val d     = resources.displayMetrics.density
+        val snap  = EspEntityStore.snapshot()
+        val lp    = snap.localPlayer ?: return
 
-        postInvalidateDelayed(16)   // ~60fps
-    }
-
-    private fun drawEsp(
-        canvas: Canvas, snap: EspEntityStore.Snapshot,
-        W: Float, H: Float, now: Long, frameDt: Long,
-    ) {
-        val lp = snap.localPlayer ?: return
-        val onScreen = HashSet<Int>()
+        val seen  = HashSet<Int>()
 
         for (entity in snap.entities) {
             val dx = entity.x - lp.x
             val dy = entity.y - lp.y
             val dz = entity.z - lp.z
-            val dist = sqrt(dx * dx + dy * dy + dz * dz)
-            if (dist < 0.5f) continue
+            val dist = sqrt(dx*dx + dy*dy + dz*dz)
+            if (dist < 0.3f || dist > 500f) continue
 
-            // Smooth position
-            val interp = poseFrames.getOrPut(entity.id) { EspPoseInterpolator() }
-            val pos = interp.sample(entity.x, entity.y, entity.z, entity.updatedAt, now, smoothEnabled)
+            val interp = interps.getOrPut(entity.id) { EspPoseInterpolator() }
+            val pos    = interp.sample(entity.x, entity.y, entity.z, entity.updatedAt, now, smoothEnabled)
 
-            // Project foot (y) và head (y+1.8m)
-            val foot = PacketProjection.project(W, H, snap, pos[0], pos[1],       pos[2])
-            val head = PacketProjection.project(W, H, snap, pos[0], pos[1] + 1.8f, pos[2])
+            // Project foot (y) và head (y+1.75m = chiều cao TB nhân vật)
+            val foot = PacketProjection.project(W, H, snap, pos[0], pos[1],        pos[2])
+            val head = PacketProjection.project(W, H, snap, pos[0], pos[1] + 1.75f, pos[2])
 
-            if (foot == null || head == null || foot[0] < 0 || foot[0] > W || head[1] < 0 || foot[1] > H) {
-                drawEdgeIndicator(canvas, snap, lp, entity, dist, W, H)
+            seen += entity.id
+
+            if (foot == null || head == null) {
+                // Ngoài màn → vẽ indicator ở rìa
+                drawEdgeArrow(canvas, snap, lp, entity, dist, W, H, d)
                 continue
             }
 
-            onScreen += entity.id
+            // ── Tính kích thước box (tỉ lệ theo chiều cao nhân vật) ──
+            val screenTop  = min(head[1], foot[1])
+            val screenBot  = max(head[1], foot[1])
+            val boxH = (screenBot - screenTop).coerceAtLeast(8f * d)
+            val boxW = boxH * 0.42f   // Tỉ lệ người (~6:14)
+            val cx   = (foot[0] + head[0]) * 0.5f
 
-            // Smooth box
-            val prevBox = smoothFrames[entity.id]
-            val rawBox  = floatArrayOf(foot[0], foot[1], head[0], head[1])
-            val box = smoothBox(prevBox, rawBox, frameDt)
-            smoothFrames[entity.id] = box
+            tmpRect.set(cx - boxW/2, screenTop, cx + boxW/2, screenBot)
 
-            val cx      = (box[0] + box[2]) * 0.5f
-            val yTop    = min(box[1], box[3])
-            val yBot    = max(box[1], box[3])
-            val boxH    = yBot - yTop
-            val boxW    = 0.46f * boxH
-            val midY    = (yTop + yBot) * 0.5f
+            // ── Lọc box quá nhỏ / quá to ──
+            if (boxH < 4f * d || boxH > H * 0.95f) continue
 
-            val rect = RectF(cx - boxW / 2, midY - boxH / 2, cx + boxW / 2, midY + boxH / 2)
+            val alpha = if (dist < 100f) 230 else (230 * (500f - dist) / 400f).toInt().coerceIn(80, 230)
 
-            // ═══ VẼ ESP BOX (màu TRẮNG) ═══
-            paint.style  = Paint.Style.STROKE
-            paint.strokeWidth = dp(1.4f)
-            paint.color  = Color.argb(220, 255, 255, 255)   // ← TRẮNG
-            canvas.drawRoundRect(rect, dp(5f), dp(5f), paint)
+            // ══ 1. VẼ LINE: bottom-center → đỉnh box (giống Pigboy) ══
+            linePaint.strokeWidth = 1.2f * d
+            linePaint.alpha = alpha
+            canvas.drawLine(W * 0.5f, H, cx, screenTop, linePaint)
 
-            // ═══ VẼ LINE từ trung tâm màn → đầu (màu TRẮNG) ═══
-            paint.strokeWidth = dp(1f)
-            paint.color  = Color.argb(180, 255, 255, 255)   // ← TRẮNG
-            canvas.drawLine(W * 0.5f, dp(44f), head[0], head[1], paint)
+            // ══ 2. VẼ BOX (outline trắng) ══
+            boxPaint.strokeWidth = 1.5f * d
+            boxPaint.alpha = alpha
+            canvas.drawRect(tmpRect, boxPaint)
 
-            // ═══ VẼ HEALTH BAR (bên phải box) ═══
-            val hpRatio = entity.health.coerceIn(0, 200) / 200f
-            paint.style = Paint.Style.FILL
-            paint.color = Color.argb(150, 18, 18, 24)
-            canvas.drawRoundRect(RectF(rect.right - dp(5f), rect.top, rect.right - dp(2f), rect.bottom), dp(2f), dp(2f), paint)
-            paint.color = if (hpRatio > 0.45f) Color.rgb(83, 222, 154) else Color.rgb(255, 105, 125)
-            val barH = hpRatio * rect.height()
-            canvas.drawRoundRect(RectF(rect.right - dp(5f), rect.bottom - barH, rect.right - dp(2f), rect.bottom), dp(2f), dp(2f), paint)
+            // ══ 3. VẼ HEALTH BAR (bên phải box, dọc) ══
+            val hpRatio  = entity.health.coerceIn(0, 200) / 200f
+            val barW     = 3f * d
+            val barLeft  = tmpRect.right + 2f * d
+            val barRight = barLeft + barW
+            // Background bar
+            fillPaint.color = Color.argb(120, 0, 0, 0)
+            canvas.drawRect(barLeft, tmpRect.top, barRight, tmpRect.bottom, fillPaint)
+            // HP bar color: xanh lá → vàng → đỏ
+            val hpColor = when {
+                hpRatio > 0.6f -> Color.rgb(80, 220, 120)
+                hpRatio > 0.3f -> Color.rgb(255, 200, 50)
+                else           -> Color.rgb(255, 80, 80)
+            }
+            fillPaint.color = Color.argb(200, Color.red(hpColor), Color.green(hpColor), Color.blue(hpColor))
+            val barTop = tmpRect.bottom - boxH * hpRatio
+            canvas.drawRect(barLeft, barTop, barRight, tmpRect.bottom, fillPaint)
 
-            // ═══ VẼ LABEL: TÊN + KHOẢNG CÁCH (không watermark) ═══
-            textPaint.textSize  = dp(10f)
-            textPaint.color     = Color.argb(220, 255, 255, 255)
-            val label = if (entity.name.isNotEmpty()) "${entity.name}  ${dist.toInt()}m"
-                        else "${dist.toInt()}m"
-            canvas.drawText(label, cx, rect.top - dp(5f), textPaint)
+            // ══ 4. VẼ LABEL: chỉ khoảng cách (bỏ "PIG BOY ~ Main Account Safe") ══
+            textPaint.textSize = (10f * d).coerceIn(22f, 36f)
+            textPaint.alpha = alpha
+            val label = "${dist.toInt()}m"
+            // Shadow để dễ đọc
+            shadowPaint.textSize = textPaint.textSize
+            shadowPaint.strokeWidth = 2.5f * d
+            canvas.drawText(label, cx, tmpRect.top - 4f * d, shadowPaint)
+            canvas.drawText(label, cx, tmpRect.top - 4f * d, textPaint)
+
+            // ══ 5. VẼ ĐẦU (chấm tròn nhỏ) — giống bản gốc ══
+            fillPaint.color = Color.argb(alpha, 255, 255, 255)
+            canvas.drawCircle(head[0], head[1], 3f * d, fillPaint)
         }
 
-        // Dọn dẹp interpolators cho entities đã biến mất
-        poseFrames.keys.retainAll(onScreen)
-        smoothFrames.keys.retainAll(onScreen)
+        // Dọn interpolators cũ
+        interps.keys.retainAll(seen)
     }
 
-    // ─── Edge indicator khi entity ngoài màn ─────────────────
+    // ─── Edge arrow khi enemy ngoài màn ──────────────────────
 
-    private fun drawEdgeIndicator(
-        canvas: Canvas, snap: EspEntityStore.Snapshot,
-        lp: EspEntityStore.Entity, entity: EspEntityStore.Entity,
-        dist: Float, W: Float, H: Float,
+    private fun drawEdgeArrow(
+        canvas: Canvas,
+        snap: EspEntityStore.Snapshot,
+        lp: EspEntityStore.Entity,
+        entity: EspEntityStore.Entity,
+        dist: Float, W: Float, H: Float, d: Float,
     ) {
         val relX = entity.x - lp.x
         val relZ = entity.z - lp.z
@@ -139,123 +170,124 @@ class EspHudView(context: Context) : View(context) {
         val cos  = cos(snap.yawRadians)
         val rx   =  relX * cos - relZ * sin
         val ry   =  relX * sin + relZ * cos
-        val angle = atan2(rx, ry)
+        val angle = atan2(rx.toDouble(), ry.toDouble()).toFloat()
+        val margin = 20f * d
+        val ex = (W/2 + sin(angle) * (W/2 - margin)).coerceIn(margin, W - margin)
+        val ey = (H/2 - cos(angle) * (H/2 - margin)).coerceIn(margin, H - margin)
 
-        val edgeX = W / 2 + sin(angle) * (W / 2 - dp(24f))
-        val edgeY = H / 2 - cos(angle) * (H / 2 - dp(24f))
-
-        paint.style = Paint.Style.FILL
-        paint.color = Color.argb(200, 255, 80, 80)
-        canvas.drawCircle(edgeX, edgeY, dp(3f), paint)
-
-        textPaint.textSize = dp(9f)
-        textPaint.color = Color.argb(180, 255, 255, 255)
-        canvas.drawText("${dist.toInt()}m", edgeX, edgeY + dp(12f), textPaint)
+        // Chấm đỏ nhỏ ở rìa + khoảng cách
+        fillPaint.color = Color.argb(200, 255, 80, 80)
+        canvas.drawCircle(ex, ey, 4f * d, fillPaint)
+        textPaint.textSize = 9f * d
+        textPaint.alpha = 180
+        canvas.drawText("${dist.toInt()}m", ex, ey + 12f * d, textPaint)
     }
-
-    // ─── Smooth box lerp ──────────────────────────────────────
-
-    private fun smoothBox(prev: FloatArray?, cur: FloatArray, frameDt: Long): FloatArray {
-        if (prev == null || !smoothEnabled) return cur
-        val alpha = (frameDt / 50f).coerceIn(0f, 1f)
-        return FloatArray(4) { i -> prev[i] + (cur[i] - prev[i]) * alpha }
-    }
-
-    private fun dp(v: Float): Float = resources.displayMetrics.density * v
 }
 
-/**
- * EspPoseInterpolator — Nội suy vị trí giữa hai keyframes.
- * Tránh ESP box giật khi game update 20Hz nhưng màn hình 60Hz.
- */
+
+// ─────────────────────────────────────────────────────────────
+// EspPoseInterpolator — Nội suy vị trí giữa 2 keyframe
+// ─────────────────────────────────────────────────────────────
 class EspPoseInterpolator {
-    private var x  = 0f; private var y  = 0f; private var z  = 0f; private var time = 0L
-    private var px = 0f; private var py = 0f; private var pz = 0f; private var prevTime = 0L
-    private var ready = false
+    private var x  = 0f; private var y  = 0f; private var z  = 0f
+    private var px = 0f; private var py = 0f; private var pz = 0f
+    private var time     = 0L
+    private var prevTime = 0L
+    private var ready    = false
 
-    fun sample(nx: Float, ny: Float, nz: Float, entityTime: Long, now: Long, smooth: Boolean): FloatArray {
-        val shouldReset = !ready || entityTime < time || (now - time) > 1000L ||
-            (nx-x)*(nx-x)+(ny-y)*(ny-y)+(nz-z)*(nz-z) > 25f
+    fun sample(nx: Float, ny: Float, nz: Float, entityTs: Long, nowMs: Long, smooth: Boolean): FloatArray {
+        val jump = (nx-x)*(nx-x) + (ny-y)*(ny-y) + (nz-z)*(nz-z) > 400f
+        val stale = nowMs - time > 2000L
 
-        if (shouldReset) {
-            x=nx; y=ny; z=nz; px=nx; py=ny; pz=nz
-            time=entityTime; prevTime=entityTime; ready=true
+        if (!ready || jump || stale) {
+            px = nx; py = ny; pz = nz; x = nx; y = ny; z = nz
+            prevTime = entityTs; time = entityTs; ready = true
             return floatArrayOf(nx, ny, nz)
         }
-        if (entityTime > time) {
-            px=x; py=y; pz=z; prevTime=time
-            x=nx; y=ny; z=nz; time=entityTime
+        if (entityTs > time) {
+            px = x; py = y; pz = z; prevTime = time
+            x = nx; y = ny; z = nz; time = entityTs
         }
-        val dt = time - prevTime
-        if (dt <= 0L || dt > 250L) return floatArrayOf(x, y, z)
-        val offset = if (smooth) 100L else 80L
-        val t = ((now - offset - prevTime).toFloat() / dt).coerceIn(0f, 1f)
-        val f = if (smooth) (3 - 2 * t) * t * t else t
+        val dt = (time - prevTime).coerceIn(1L, 500L)
+        val lag = if (smooth) 80L else 0L
+        val t   = ((nowMs - lag - prevTime).toFloat() / dt).coerceIn(0f, 1.2f)
+        val f   = if (smooth) t * t * (3f - 2f * t) else t  // smoothstep
         return floatArrayOf(px + (x-px)*f, py + (y-py)*f, pz + (z-pz)*f)
     }
 }
 
-/**
- * PacketProjection — Chuyển tọa độ 3D world → 2D screen.
- * Dùng camera model TPP của game.
- */
+
+// ─────────────────────────────────────────────────────────────
+// PacketProjection — World 3D → Screen 2D
+// ─────────────────────────────────────────────────────────────
 object PacketProjection {
 
-    data class Camera(
-        val back: Float = 3.0f,
-        val side: Float = 0.35f,
-        val eye:  Float = 1.6f,
-        val hfov: Float = 91.49f,
-    )
-
-    @Volatile var camera = Camera()
+    // TPP camera params (Free Fire)
+    @Volatile private var camBack = 3.0f
+    @Volatile private var camSide = 0.35f
+    @Volatile private var camEye  = 1.6f
+    @Volatile private var hFovDeg = 91.49f
 
     fun setCamera(back: Float, side: Float, eye: Float, fovDeg: Float) {
-        camera = Camera(
-            back.coerceIn(0f, 6f),
-            side.coerceIn(-2f, 2f),
-            eye.coerceIn(0.5f, 3f),
-            fovDeg.coerceIn(50f, 120f),
-        )
+        camBack = back.coerceIn(0.5f, 8f)
+        camSide = side.coerceIn(-2f, 2f)
+        camEye  = eye.coerceIn(0.5f, 3f)
+        hFovDeg = fovDeg.coerceIn(50f, 120f)
     }
 
-    fun project(W: Float, H: Float, snap: EspEntityStore.Snapshot, wx: Float, wy: Float, wz: Float): FloatArray? {
+    /**
+     * Project world point (wx,wy,wz) → screen (sx, sy, depth).
+     * Returns null nếu behind camera.
+     */
+    fun project(W: Float, H: Float, snap: EspEntityStore.Snapshot,
+                wx: Float, wy: Float, wz: Float): FloatArray? {
         val lp = snap.localPlayer ?: return null
-        if (W <= 0 || H <= 0) return null
+        if (W <= 0f || H <= 0f) return null
 
-        var dirX = snap.dirX; var dirY = snap.dirY; var dirZ = snap.dirZ
-        if (dirX == 0f && dirY == 0f && dirZ == 0f) {
-            val yaw = snap.yawRadians
-            dirX = sin(yaw); dirY = 0f; dirZ = cos(yaw)
+        // Camera direction
+        var dx = snap.dirX; var dy = snap.dirY; var dz = snap.dirZ
+        if (dx == 0f && dy == 0f && dz == 0f) {
+            dx = sin(snap.yawRadians); dy = 0f; dz = cos(snap.yawRadians)
         }
-        val mag = sqrt(dirX*dirX + dirY*dirY + dirZ*dirZ)
-        if (mag < 1e-4f) return null
-        dirX /= mag; dirY /= mag; dirZ /= mag
+        val dmag = sqrt(dx*dx + dy*dy + dz*dz)
+        if (dmag < 1e-5f) return null
+        dx /= dmag; dy /= dmag; dz /= dmag
 
-        val hMag = sqrt(dirZ*dirZ + dirX*dirX)
-        if (hMag < 1e-4f) return null
-        val rightX =  dirZ / hMag
-        val rightZ = -dirX / hMag
+        // Right vector (horizontal only)
+        val hMag = sqrt(dx*dx + dz*dz)
+        if (hMag < 1e-5f) return null
+        val rx =  dz / hMag
+        val rz = -dx / hMag
 
-        val cam = camera
-        val camX = lp.x - cam.back * dirX + cam.side * rightX
-        val camY = lp.y + cam.eye  - cam.back * dirY
-        val camZ = lp.z - cam.back * dirZ + cam.side * rightZ
+        // Camera position (TPP offset)
+        val cx = lp.x - camBack*dx + camSide*rx
+        val cy = lp.y + camEye - camBack*dy
+        val cz = lp.z - camBack*dz + camSide*rz
 
-        val dx = wx - camX; val dy = wy - camY; val dz = wz - camZ
-        val depth = dirX*dx + dirY*dy + dirZ*dz
-        if (depth < 0.5f) return null
+        // Delta from camera to point
+        val ex = wx - cx; val ey = wy - cy; val ez = wz - cz
 
-        val fovRad   = Math.toRadians(cam.hfov.toDouble())
-        val fovScale = tan(fovRad * 0.5) / 1.7777777777777777
+        // Depth = dot(forward, delta)
+        val depth = dx*ex + dy*ey + dz*ez
+        if (depth < 0.3f) return null
 
-        val sX = ((rightX*dx + rightZ*dz) / depth / (W/H * fovScale)).toFloat() * W * 0.5f + W * 0.5f
-        val dotUp = ((-rightZ * dirY) * dx + (-dirY * rightX) * dz) / depth
-        val sY = H * 0.5f - (dotUp / fovScale).toFloat() * H * 0.5f
+        // Screen projection
+        val fovHalfTan = tan(Math.toRadians(hFovDeg * 0.5)).toFloat()
+        val aspect     = W / H
 
-        if (!sX.isFinite() || !sY.isFinite()) return null
-        if (sX < -W || sX > 2*W || sY < -H || sY > 2*H) return null
-        return floatArrayOf(sX, sY, depth)
+        val screenX = W * 0.5f + W * 0.5f * (rx*ex + rz*ez) / (depth * aspect * fovHalfTan)
+
+        // Up vector = forward × right
+        val ux = dy*rz - dz*(0f) // simplified (ry=0 for horizontal camera)
+        val uy = dz*rx - dx*rz   // actually: forward × right
+        val uz = dx*(0f) - dy*rx
+        // Simpler: up is just (0,1,0) rotated by pitch
+        // For Free Fire TPP, approximate up as world-up projected
+        val upDotE = ey - dy*(dx*ex + dy*ey + dz*ez) / (dx*dx + dy*dy + dz*dz)
+        val screenY = H * 0.5f - H * 0.5f * upDotE / (depth * fovHalfTan)
+
+        if (!screenX.isFinite() || !screenY.isFinite()) return null
+        return floatArrayOf(screenX, screenY, depth)
     }
 
     fun radar(relX: Float, relZ: Float, yawRad: Float): FloatArray {
