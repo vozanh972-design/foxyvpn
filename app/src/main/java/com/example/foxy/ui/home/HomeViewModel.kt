@@ -32,7 +32,6 @@ data class HomeUiState(
     val downMbps: Double = 0.0,
     val upMbps: Double = 0.0,
     val needsVpnPermission: Boolean = false,
-    val userName: String = "Robert",
     val serverName: String = "United States",
     val serverHint: String = "Nhanh nhất hiện tại",
     val serverCountryCode: String = "US",

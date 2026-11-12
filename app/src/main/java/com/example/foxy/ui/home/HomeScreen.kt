@@ -26,11 +26,9 @@ import androidx.compose.material.icons.rounded.ArrowDownward
 import androidx.compose.material.icons.rounded.ArrowUpward
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Home
-import androidx.compose.material.icons.rounded.Notifications
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.PowerSettingsNew
 import androidx.compose.material.icons.rounded.Public
-import androidx.compose.material.icons.rounded.WorkspacePremium
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
@@ -45,7 +43,11 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.vector.path
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
@@ -59,10 +61,34 @@ import com.example.foxy.ui.theme.VeilColors as C
 import com.example.foxy.ui.theme.VeilTheme
 import java.util.Locale
 
+private val CrownIcon: ImageVector by lazy {
+    ImageVector.Builder(
+        name = "Crown",
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f,
+    ).path(
+        stroke = SolidColor(Color.Black),
+        strokeLineWidth = 1.9f,
+        strokeLineCap = StrokeCap.Round,
+        strokeLineJoin = StrokeJoin.Round,
+    ) {
+        moveTo(4f, 18f)
+        lineTo(3f, 8f)
+        lineTo(8.5f, 12.5f)
+        lineTo(12f, 5.5f)
+        lineTo(15.5f, 12.5f)
+        lineTo(21f, 8f)
+        lineTo(20f, 18f)
+        close()
+    }.build()
+}
+
 enum class HomeTab(val label: String, val icon: ImageVector) {
     Home("Trang chủ", Icons.Rounded.Home),
     Servers("Máy chủ", Icons.Rounded.Public),
-    Premium("Premium", Icons.Rounded.WorkspacePremium),
+    Premium("Premium", CrownIcon),
     Account("Tài khoản", Icons.Rounded.Person),
 }
 
@@ -71,7 +97,6 @@ enum class HomeTab(val label: String, val icon: ImageVector) {
 fun HomeRoute(
     viewModel: HomeViewModel = viewModel(),
     onUpgradeClick: () -> Unit = {},
-    onNotificationClick: () -> Unit = {},
     onServerClick: () -> Unit = {},
     onTabSelected: (HomeTab) -> Unit = {},
 ) {
@@ -80,7 +105,6 @@ fun HomeRoute(
         state = state,
         onPowerClick = viewModel::onPowerClick,
         onUpgradeClick = onUpgradeClick,
-        onNotificationClick = onNotificationClick,
         onServerClick = onServerClick,
         onTabSelected = onTabSelected,
     )
@@ -91,7 +115,6 @@ fun HomeScreen(
     state: HomeUiState,
     onPowerClick: () -> Unit,
     onUpgradeClick: () -> Unit,
-    onNotificationClick: () -> Unit,
     onServerClick: () -> Unit,
     onTabSelected: (HomeTab) -> Unit,
     modifier: Modifier = Modifier,
@@ -103,7 +126,7 @@ fun HomeScreen(
             .background(Brush.verticalGradient(listOf(C.HeaderTint, C.Background), startY = 0f, endY = gradientEnd))
             .statusBarsPadding(),
     ) {
-        Header(state.userName, onUpgradeClick, onNotificationClick)
+        Header(onUpgradeClick)
         StatusText(state, Modifier.padding(top = 14.dp))
         PowerButton(state, onPowerClick, Modifier.align(Alignment.CenterHorizontally).padding(top = 6.dp, bottom = 8.dp))
         Surface(
@@ -127,29 +150,16 @@ fun HomeScreen(
 }
 
 @Composable
-private fun Header(userName: String, onUpgrade: () -> Unit, onBell: () -> Unit) {
+private fun Header(onUpgrade: () -> Unit) {
     Row(
         Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 20.dp),
+        horizontalArrangement = Arrangement.End,
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        Box(Modifier.size(40.dp).background(C.AccentTint, CircleShape), contentAlignment = Alignment.Center) {
-            Text(userName.take(1).uppercase(), color = C.AccentText, fontWeight = FontWeight.Bold)
-        }
-        Column {
-            Text("Xin chào", fontSize = 13.sp, color = C.Muted)
-            Text(userName, fontWeight = FontWeight.Bold, color = C.Ink)
-        }
-        Spacer(Modifier.weight(1f))
         Surface(onClick = onUpgrade, shape = RoundedCornerShape(19.dp), color = Color.White, modifier = Modifier.height(38.dp)) {
             Row(Modifier.padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                Icon(Icons.Rounded.WorkspacePremium, null, Modifier.size(16.dp), tint = C.Ink)
+                Icon(CrownIcon, null, Modifier.size(16.dp), tint = C.Ink)
                 Text("Nâng cấp", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = C.Ink)
-            }
-        }
-        Surface(onClick = onBell, shape = CircleShape, color = Color.White, modifier = Modifier.size(40.dp)) {
-            Box(contentAlignment = Alignment.Center) {
-                Icon(Icons.Rounded.Notifications, "Thông báo", Modifier.size(20.dp), tint = C.Ink)
             }
         }
     }
@@ -299,15 +309,15 @@ private fun mbps(v: Float) =
 private fun clock(s: Long) = String.format(Locale.US, "%02d:%02d:%02d", s / 3600, s % 3600 / 60, s % 60)
 
 @Preview(showBackground = true, heightDp = 844, widthDp = 390)
-@Composable private fun PreviewDisconnected() = VeilTheme { HomeScreen(HomeUiState(), {}, {}, {}, {}, {}) }
+@Composable private fun PreviewDisconnected() = VeilTheme { HomeScreen(HomeUiState(), {}, {}, {}, {}) }
 
 @Preview(showBackground = true, heightDp = 844, widthDp = 390)
-@Composable private fun PreviewConnecting() = VeilTheme { HomeScreen(HomeUiState(status = ConnectionStatus.Connecting), {}, {}, {}, {}, {}) }
+@Composable private fun PreviewConnecting() = VeilTheme { HomeScreen(HomeUiState(status = ConnectionStatus.Connecting), {}, {}, {}, {}) }
 
 @Preview(showBackground = true, heightDp = 844, widthDp = 390)
 @Composable private fun PreviewConnected() = VeilTheme {
     HomeScreen(
         HomeUiState(status = ConnectionStatus.Connected, downMbps = 13.5, upMbps = 15.5, elapsedSeconds = 2720),
-        {}, {}, {}, {}, {},
+        {}, {}, {}, {},
     )
 }
