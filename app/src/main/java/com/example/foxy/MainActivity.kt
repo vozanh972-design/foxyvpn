@@ -17,9 +17,12 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -152,47 +155,50 @@ class MainActivity : ComponentActivity() {
                                     var currentTab by remember { mutableStateOf(HomeTab.Home) }
 
                                     VeilTheme {
-                                        when (currentTab) {
-                                            HomeTab.Home -> {
-                                                HomeRoute(
-                                                    viewModel     = vm,
-                                                    onServerClick = { showPicker = true },
-                                                    onTabSelected = { tab ->
-                                                        when (tab) {
-                                                            HomeTab.Servers -> showPicker = true
-                                                            HomeTab.Account -> currentTab = HomeTab.Account
-                                                            else -> currentTab = tab
-                                                        }
-                                                    },
-                                                )
+                                        androidx.compose.foundation.layout.Box(modifier = Modifier.fillMaxSize()) {
+                                            when (currentTab) {
+                                                HomeTab.Home -> {
+                                                    HomeRoute(
+                                                        viewModel     = vm,
+                                                        onServerClick = { showPicker = true },
+                                                        showBottomNav = false,
+                                                    )
+                                                }
+                                                HomeTab.Account -> {
+                                                    com.example.foxy.ui.profile.ProfileRoute(
+                                                        onLogout = {
+                                                            keyStore.clear()
+                                                            isActivated = false
+                                                        },
+                                                        showBottomNav = false,
+                                                    )
+                                                }
+                                                else -> {
+                                                    HomeRoute(
+                                                        viewModel     = vm,
+                                                        onServerClick = { showPicker = true },
+                                                        showBottomNav = false,
+                                                    )
+                                                }
                                             }
-                                            HomeTab.Account -> {
-                                                com.example.foxy.ui.profile.ProfileRoute(
-                                                    onTabSelected = { tab ->
+
+                                            // ═══ THANH ĐIỀU HƯỚNG DÙNG CHUNG CỐ ĐỊNH DUY NHẤT Ở ĐÁY ═══
+                                            androidx.compose.foundation.layout.Box(
+                                                modifier = Modifier
+                                                    .align(Alignment.BottomCenter)
+                                                    .fillMaxWidth()
+                                                    .padding(horizontal = 24.dp)
+                                                    .navigationBarsPadding()
+                                                    .padding(bottom = 16.dp)
+                                            ) {
+                                                com.example.foxy.ui.home.BottomNav(
+                                                    selected = currentTab,
+                                                    onSelect = { tab ->
                                                         when (tab) {
                                                             HomeTab.Servers -> showPicker = true
-                                                            HomeTab.Home -> currentTab = HomeTab.Home
                                                             else -> currentTab = tab
                                                         }
-                                                    },
-                                                    onLogout = {
-                                                        keyStore.clear()
-                                                        isActivated = false
-                                                    },
-                                                )
-                                            }
-                                            else -> {
-                                                // Các tab khác (Servers, Premium)
-                                                HomeRoute(
-                                                    viewModel     = vm,
-                                                    onServerClick = { showPicker = true },
-                                                    onTabSelected = { tab ->
-                                                        when (tab) {
-                                                            HomeTab.Servers -> showPicker = true
-                                                            HomeTab.Account -> currentTab = HomeTab.Account
-                                                            else -> currentTab = tab
-                                                        }
-                                                    },
+                                                    }
                                                 )
                                             }
                                         }

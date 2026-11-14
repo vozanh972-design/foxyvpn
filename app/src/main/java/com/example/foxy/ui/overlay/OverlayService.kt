@@ -88,6 +88,15 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner, ViewM
         ).apply { gravity = Gravity.TOP or Gravity.START; x = chipX; y = chipY }
     }
 
+    private val vpnStateReceiver = object : android.content.BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action == FreefireVpnService.BROADCAST_STATE) {
+                val connected = intent.getBooleanExtra(FreefireVpnService.EXTRA_CONNECTED, false)
+                stateFlow.update { it.copy(isConnected = connected) }
+            }
+        }
+    }
+
     // ─── Lifecycle ────────────────────────────────────────────
 
     override fun onCreate() {
@@ -98,6 +107,10 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner, ViewM
         startAsForeground()
         if (!Settings.canDrawOverlays(this)) { stopSelf(); return }
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
+
+        // Đăng ký nhận broadcast trạng thái VPN để đồng bộ nút Bật/Tắt
+        val filter = android.content.IntentFilter(FreefireVpnService.BROADCAST_STATE)
+        ContextCompat.registerReceiver(this, vpnStateReceiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED)
 
         // 1. Add full-screen ESP HUD (phía dưới overlay)
         addEspHud()
@@ -142,11 +155,22 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner, ViewM
                         expanded        = expanded,
                         onExpandedChange= ::updateExpanded,
                         onDisconnect    = {
-                            startService(Intent(this@OverlayService, FreefireVpnService::class.java).apply {
-                                action = FreefireVpnService.ACTION_STOP
-                            })
-                            // KHÔNG gọi stopSelf() ở đây: giữ nguyên màn nổi ngang khi ngắt kết nối VPN
-                            // Chỉ đóng màn nổi khi người dùng bấm nút [X] (onDismissOverlay)
+                            if (state.isConnected) {
+                                // Đang kết nối -> ngắt kết nối
+                                startService(Intent(this@OverlayService, FreefireVpnService::class.java).apply {
+                                    action = FreefireVpnService.ACTION_STOP
+                                })
+                                stateFlow.update { it.copy(isConnected = false) }
+                            } else {
+                                // Đã ngắt -> bật kết nối lại
+                                ContextCompat.startForegroundService(
+                                    this@OverlayService,
+                                    Intent(this@OverlayService, FreefireVpnService::class.java).apply {
+                                        action = FreefireVpnService.ACTION_START
+                                    }
+                                )
+                                stateFlow.update { it.copy(isConnected = true) }
+                            }
                         },
                         onDismissOverlay= { stopSelf() },
                         onPriorityChange= { checked -> stateFlow.update { it.copy(gamePriority = checked) } },
@@ -277,6 +301,7 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner, ViewM
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onDestroy() {
+        runCatching { unregisterReceiver(vpnStateReceiver) }
         if (::windowManager.isInitialized) {
             espHudView?.let   { runCatching { windowManager.removeView(it) } }
             overlayView?.let  { runCatching { windowManager.removeView(it) } }

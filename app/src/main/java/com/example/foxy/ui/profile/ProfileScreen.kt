@@ -59,11 +59,13 @@ fun ProfileRoute(
     onLanguageClick: () -> Unit = {},
     onHelpClick: () -> Unit = {},
     onLogout: () -> Unit = {},
+    showBottomNav: Boolean = true,
 ) {
     val state by viewModel.state.collectAsState()
     ProfileScreen(
         state, viewModel::onAutoConnectChange, onUpgradeClick, onProtocolClick,
         onLanguageClick, onHelpClick, onLogout, onTabSelected,
+        showBottomNav = showBottomNav,
     )
 }
 
@@ -77,6 +79,7 @@ fun ProfileScreen(
     onHelpClick: () -> Unit,
     onLogout: () -> Unit,
     onTabSelected: (HomeTab) -> Unit,
+    showBottomNav: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
     val gradientEnd = with(LocalDensity.current) { 460.dp.toPx() }
@@ -117,9 +120,14 @@ fun ProfileScreen(
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.padding(top = 12.dp, start = 4.dp).clickable(role = Role.Button, onClick = onLogout).padding(vertical = 8.dp),
             )
+            if (!showBottomNav) {
+                androidx.compose.foundation.layout.Spacer(Modifier.height(80.dp))
+            }
         }
-        Box(Modifier.padding(horizontal = 24.dp).navigationBarsPadding().padding(bottom = 24.dp)) {
-            BottomNav(HomeTab.Account, onTabSelected)
+        if (showBottomNav) {
+            Box(Modifier.padding(horizontal = 24.dp).navigationBarsPadding().padding(bottom = 24.dp)) {
+                BottomNav(HomeTab.Account, onTabSelected)
+            }
         }
     }
 }

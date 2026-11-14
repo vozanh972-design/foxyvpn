@@ -98,6 +98,7 @@ data class GameOverlayState(
     val gamePriority: Boolean = true,
     val eagleEyeEnabled: Boolean = true,
     val languageLabel: String = "Tiếng Việt",
+    val isConnected: Boolean = true,
 )
 
 enum class OverlayTab(val icon: ImageVector, val label: String) {
@@ -190,7 +191,7 @@ private fun HomeContent(
         Column(Modifier.width(236.dp).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             ServerCard(state, onServerClick)
             StatsCard(state, Modifier.weight(1f))
-            DisconnectButton(onDisconnect)
+            DisconnectButton(state.isConnected, onDisconnect)
         }
     }
 }
@@ -247,10 +248,13 @@ private fun TopBar(state: GameOverlayState, onCollapse: () -> Unit, onDismiss: (
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Box(Modifier.size(8.dp).background(VeilColors.Accent, CircleShape))
+                val dotColor = if (state.isConnected) VeilColors.Accent else Color(0xFFE67E22)
+                Box(Modifier.size(8.dp).background(dotColor, CircleShape))
                 Text(
                     buildAnnotatedString {
-                        withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append("Đã kết nối") }
+                        withStyle(SpanStyle(fontWeight = FontWeight.Bold)) {
+                            append(if (state.isConnected) "Đã kết nối" else "Chưa kết nối")
+                        }
                         append(" · " + state.serverName)
                     },
                     color = Color.White,
@@ -516,16 +520,25 @@ private fun StatRow(label: String, value: String) {
 }
 
 @Composable
-private fun DisconnectButton(onClick: () -> Unit) {
+private fun DisconnectButton(isConnected: Boolean, onClick: () -> Unit) {
+    val bg = if (isConnected) Color.Transparent else VeilColors.Accent
+    val textAndIconColor = if (isConnected) Color.White else HeroInk
+    val borderStroke = if (isConnected) Color.White.copy(alpha = 0.22f) else Color.Transparent
+
     Row(
         Modifier.fillMaxWidth().height(48.dp).clip(RoundedCornerShape(16.dp))
-            .border(1.5.dp, Color.White.copy(alpha = 0.22f), RoundedCornerShape(16.dp))
+            .background(bg)
+            .border(1.5.dp, borderStroke, RoundedCornerShape(16.dp))
             .clickable(role = Role.Button, onClick = onClick),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
     ) {
-        Icon(Icons.Rounded.PowerSettingsNew, null, Modifier.size(18.dp), tint = Color.White)
-        Text("Ngắt kết nối", color = Color.White, fontWeight = FontWeight.SemiBold)
+        Icon(Icons.Rounded.PowerSettingsNew, null, Modifier.size(18.dp), tint = textAndIconColor)
+        Text(
+            if (isConnected) "Ngắt kết nối" else "Bật kết nối",
+            color = textAndIconColor,
+            fontWeight = FontWeight.Bold,
+        )
     }
 }
 

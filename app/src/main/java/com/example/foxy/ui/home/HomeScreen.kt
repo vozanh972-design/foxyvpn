@@ -103,6 +103,7 @@ fun HomeRoute(
     onUpgradeClick: () -> Unit = {},
     onServerClick: () -> Unit = {},
     onTabSelected: (HomeTab) -> Unit = {},
+    showBottomNav: Boolean = true,
 ) {
     val state by viewModel.state.collectAsState()
     HomeScreen(
@@ -111,6 +112,7 @@ fun HomeRoute(
         onUpgradeClick = onUpgradeClick,
         onServerClick = onServerClick,
         onTabSelected = onTabSelected,
+        showBottomNav = showBottomNav,
     )
 }
 
@@ -121,6 +123,7 @@ fun HomeScreen(
     onUpgradeClick: () -> Unit,
     onServerClick: () -> Unit,
     onTabSelected: (HomeTab) -> Unit,
+    showBottomNav: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
     val gradientEnd = with(LocalDensity.current) { 460.dp.toPx() }
@@ -147,7 +150,11 @@ fun HomeScreen(
                 Spacer(Modifier.height(12.dp))
                 LocationCard(state, onServerClick)
                 Spacer(Modifier.weight(1f))
-                BottomNav(HomeTab.Home, onTabSelected)
+                if (showBottomNav) {
+                    BottomNav(HomeTab.Home, onTabSelected)
+                } else {
+                    Spacer(Modifier.height(56.dp))
+                }
             }
         }
     }
