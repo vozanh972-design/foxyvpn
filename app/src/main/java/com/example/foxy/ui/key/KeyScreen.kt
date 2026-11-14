@@ -2,6 +2,7 @@ package com.example.foxy.ui.key
 
 import android.content.Intent
 import android.net.Uri
+import androidx.compose.animation.Crossfade
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -21,22 +22,17 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -52,14 +48,18 @@ import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.PathParser
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import kotlinx.coroutines.launch
 
 // ---------- Màu (lấy đúng từ bản mẫu) ----------
 private val BgPaper = Color(0xFFFBFBFA)
@@ -67,6 +67,10 @@ private val Ink = Color(0xFF1C1F1D)
 private val Ink2 = Color(0xFF6B6F6C)
 private val LineSoft = Color(0xFFE4E2DC)
 private val CardShadow = Color(0x551E0A3C)
+private val PlaceholderGrey = Color(0xFF9A9D98)
+
+// Key hợp lệ: 3 nhóm, mỗi nhóm 4 ký tự chữ hoặc số, nối bằng gạch ngang
+private val KEY_REGEX = Regex("^[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$")
 
 // Gradient header: cam -> hồng san hô -> tím -> xanh tím
 private val HeroStops: Array<Pair<Float, Color>> = arrayOf(
@@ -139,16 +143,25 @@ private val ZaloIcon: ImageVector by lazy {
 private val BackIcon: ImageVector by lazy {
     lineIcon(
         name = "Back",
-        tint = Color.White,
+        tint = Ink,
         strokeWidth = 1.8f,
         strokes = listOf("M15 6l-6 6 6 6"),
     )
 }
 
+/** Chuẩn hoá khi gõ: chỉ giữ chữ và số, viết hoa, tối đa 12 ký tự, tự thêm gạch sau mỗi 4 ký tự. */
+private fun formatKey(input: String): String =
+    input.uppercase()
+        .filter { it in 'A'..'Z' || it in '0'..'9' }
+        .take(12)
+        .chunked(4)
+        .joinToString("-")
+
 /**
- * Màn nhập key với giao diện IntroScreen theo thiết kế bản mẫu.
+ * Màn hình nhập key chính:
+ * - Mặc định hiển thị IntroScreen.
+ * - Khi bấm "Tôi đã có key" hoặc "Lấy key" -> chuyển sang EnterKeyScreen chuẩn mẫu.
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun KeyScreen(
     onActivated: () -> Unit,
@@ -156,118 +169,47 @@ fun KeyScreen(
     viewModel: KeyViewModel = viewModel(),
 ) {
     val context = LocalContext.current
-    var showKeySheet by remember { mutableStateOf(false) }
-    var inputKey by remember { mutableStateOf("") }
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    val scope = rememberCoroutineScope()
+    var showEnterKey by remember { mutableStateOf(false) }
 
-    val doActivate: (String) -> Unit = { key ->
-        val finalKey = key.ifBlank { "VIP-FOX-KEY-8888" }
-        viewModel.onKeyChange(finalKey)
-        viewModel.onActivate()
-        onActivated()
-    }
-
-    IntroScreen(
-        onBack = { /* Có thể đóng hoặc bỏ qua */ },
-        onTelegram = {
-            runCatching {
-                val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://t.me"))
-                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                context.startActivity(intent)
-            }
-        },
-        onZalo = {
-            runCatching {
-                val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://zalo.me"))
-                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                context.startActivity(intent)
-            }
-        },
-        onGetKey = {
-            // Khi bấm Lấy key -> mở sheet nhập key hoặc kích hoạt
-            showKeySheet = true
-        },
-        onHaveKey = {
-            // Khi bấm Tôi đã có key -> mở sheet nhập key
-            showKeySheet = true
-        },
-    )
-
-    if (showKeySheet) {
-        ModalBottomSheet(
-            onDismissRequest = { showKeySheet = false },
-            sheetState = sheetState,
-            containerColor = Color.White,
-            shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 24.dp, vertical = 12.dp)
-                    .imePadding()
-                    .navigationBarsPadding(),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(16.dp),
-            ) {
-                Text(
-                    text = "Nhập mã key kích hoạt",
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Ink,
-                )
-
-                OutlinedTextField(
-                    value = inputKey,
-                    onValueChange = { inputKey = it },
-                    placeholder = { Text("Nhập key của bạn (nhập bất kỳ)...", color = Ink2, fontSize = 14.sp) },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = Color(0xFFB452B0),
-                        unfocusedBorderColor = LineSoft,
-                    ),
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                    keyboardActions = KeyboardActions(onDone = {
-                        scope.launch {
-                            sheetState.hide()
-                            showKeySheet = false
-                            doActivate(inputKey)
-                        }
-                    }),
-                )
-
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(50.dp)
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(Brush.horizontalGradient(CtaStops))
-                        .clickable {
-                            scope.launch {
-                                sheetState.hide()
-                                showKeySheet = false
-                                doActivate(inputKey)
-                            }
-                        },
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(
-                        text = "Kích hoạt ngay",
-                        color = Color.White,
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                }
-
-                Spacer(Modifier.height(12.dp))
-            }
+    Crossfade(targetState = showEnterKey, label = "KeyScreenTransition") { inEnterKey ->
+        if (inEnterKey) {
+            EnterKeyScreen(
+                onBack = { showEnterKey = false },
+                onApply = { key ->
+                    viewModel.onKeyChange(key)
+                    viewModel.onActivate()
+                    onActivated()
+                },
+            )
+        } else {
+            IntroScreen(
+                onBack = { /* Không cần nút back ở màn chính */ },
+                onTelegram = {
+                    runCatching {
+                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://t.me"))
+                        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        context.startActivity(intent)
+                    }
+                },
+                onZalo = {
+                    runCatching {
+                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://zalo.me"))
+                        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        context.startActivity(intent)
+                    }
+                },
+                onGetKey = {
+                    showEnterKey = true
+                },
+                onHaveKey = {
+                    showEnterKey = true
+                },
+            )
         }
     }
 }
 
-// ---------- Màn hình IntroScreen theo mẫu ----------
+// ---------- Màn hình 1: IntroScreen ----------
 @Composable
 fun IntroScreen(
     onBack: () -> Unit = {},
@@ -443,6 +385,147 @@ private fun IntroFooter(onGetKey: () -> Unit, onHaveKey: () -> Unit) {
                 text = "Tôi đã có key",
                 color = Ink2,
                 fontSize = 14.sp,
+            )
+        }
+    }
+}
+
+// ---------- Màn hình 2: EnterKeyScreen ----------
+@Composable
+fun EnterKeyScreen(
+    onBack: () -> Unit = {},
+    onApply: (String) -> Unit = {},
+) {
+    var value by remember { mutableStateOf("") }
+    val valid = KEY_REGEX.matches(value)
+    val keyboard = LocalSoftwareKeyboardController.current
+
+    fun apply() {
+        if (!valid) return
+        keyboard?.hide()
+        onApply(value)
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(BgPaper)
+            .statusBarsPadding(),
+    ) {
+        // Nút quay lại
+        IconButton(
+            onClick = onBack,
+            modifier = Modifier
+                .offset(x = (-8).dp)
+                .padding(top = 4.dp),
+        ) {
+            Icon(
+                imageVector = BackIcon,
+                contentDescription = "Quay lại",
+                tint = Ink,
+                modifier = Modifier.size(22.dp),
+            )
+        }
+
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = 22.dp, end = 22.dp, top = 22.dp),
+        ) {
+            Text(
+                text = "Nhập key",
+                color = Ink2,
+                fontSize = 13.sp,
+            )
+
+            Text(
+                text = "Nhập key để nhận 5 giờ",
+                modifier = Modifier.padding(top = 14.dp),
+                color = Ink,
+                fontSize = 24.sp,
+                fontWeight = FontWeight.Normal,
+            )
+
+            // Ô nhập key
+            BasicTextField(
+                value = value,
+                onValueChange = { value = formatKey(it) },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 30.dp)
+                    .height(60.dp),
+                textStyle = TextStyle(
+                    color = Ink,
+                    fontSize = 26.sp,
+                    letterSpacing = 3.sp,
+                    textAlign = TextAlign.Center,
+                ),
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(
+                    capitalization = KeyboardCapitalization.Characters,
+                    keyboardType = KeyboardType.Ascii,
+                    imeAction = ImeAction.Done,
+                    autoCorrectEnabled = false,
+                ),
+                keyboardActions = KeyboardActions(onDone = { apply() }),
+                decorationBox = { inner ->
+                    Box(
+                        modifier = Modifier.fillMaxWidth(),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        if (value.isEmpty()) {
+                            Text(
+                                text = "XXXX - XXXX - XXXX",
+                                color = PlaceholderGrey,
+                                fontSize = 26.sp,
+                                letterSpacing = 3.sp,
+                                textAlign = TextAlign.Center,
+                            )
+                        }
+                        inner()
+                    }
+                },
+            )
+
+            // Gạch chân dưới ô nhập
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(1.5.dp)
+                    .background(Ink),
+            )
+
+            Text(
+                text = if (valid) "Key hợp lệ" else "Gồm 12 ký tự, chia thành 3 nhóm.",
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 12.dp),
+                color = Ink2,
+                fontSize = 13.sp,
+                textAlign = TextAlign.Center,
+            )
+        }
+
+        Spacer(Modifier.weight(1f))
+
+        // Nút Áp dụng: sáng khi key đủ định dạng, mờ khi chưa đủ
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .imePadding()
+                .navigationBarsPadding()
+                .padding(start = 22.dp, end = 22.dp, bottom = 24.dp)
+                .height(52.dp)
+                .clip(RoundedCornerShape(6.dp))
+                .background(Ink.copy(alpha = if (valid) 1f else 0.45f))
+                .clickable(enabled = valid, onClick = { apply() }),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                text = "Áp dụng",
+                color = Color.White,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Medium,
             )
         }
     }
