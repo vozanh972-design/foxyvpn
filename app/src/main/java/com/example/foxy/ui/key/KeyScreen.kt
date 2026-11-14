@@ -324,33 +324,24 @@ private fun IntroHero(onBack: () -> Unit) {
             .statusBarsPadding()
             .padding(start = 22.dp, end = 22.dp, top = 22.dp, bottom = 26.dp),
     ) {
-        IconButton(
-            onClick = onBack,
-            modifier = Modifier.offset(x = (-8).dp),
-        ) {
-            Icon(
-                imageVector = BackIcon,
-                contentDescription = "Đóng",
-                tint = Color.White,
-                modifier = Modifier.size(22.dp),
-            )
-        }
+        Spacer(Modifier.height(16.dp))
 
         Text(
-            text = "Nhận thêm dữ liệu",
-            modifier = Modifier.padding(top = 40.dp),
+            text = "Nhận thêm giờ sử dụng",
+            modifier = Modifier.padding(top = 16.dp),
             color = Color.White.copy(alpha = 0.92f),
-            fontSize = 14.sp,
+            fontSize = 15.sp,
+            fontWeight = FontWeight.Medium,
         )
 
         Text(
-            text = "1 GB",
+            text = "5 Giờ",
             modifier = Modifier.padding(top = 6.dp),
             color = Color.White,
-            fontSize = 112.sp,
+            fontSize = 96.sp,
             fontWeight = FontWeight.Light,
-            letterSpacing = (-4).sp,
-            lineHeight = 112.sp,
+            letterSpacing = (-3).sp,
+            lineHeight = 96.sp,
         )
 
         // Thẻ trắng nổi
@@ -369,13 +360,13 @@ private fun IntroHero(onBack: () -> Unit) {
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             Text(
-                text = "Mỗi bạn đăng ký = +1 GB",
+                text = "Mỗi ngày có 2 lượt lấy key miễn phí",
                 color = Ink,
-                fontSize = 16.sp,
+                fontSize = 15.sp,
                 fontWeight = FontWeight.SemiBold,
             )
             Text(
-                text = "Cả hai đều được cộng dữ liệu",
+                text = "Thời hạn 5 giờ cho mỗi lượt kích hoạt",
                 color = Ink2,
                 fontSize = 13.sp,
             )
