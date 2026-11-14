@@ -46,25 +46,56 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.foxy.ui.home.BottomNav
 import com.example.foxy.ui.home.HomeTab
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.vector.path
 import com.example.foxy.ui.theme.VeilColors as C
 import com.example.foxy.ui.theme.VeilTheme
+
+private val BackArrowIcon: ImageVector by lazy {
+    ImageVector.Builder(
+        name = "BackArrow",
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f,
+    ).path(
+        stroke = SolidColor(Color(0xFF1C1F1D)),
+        strokeLineWidth = 2.2f,
+        strokeLineCap = StrokeCap.Round,
+        strokeLineJoin = StrokeJoin.Round,
+    ) {
+        moveTo(15f, 19f)
+        lineTo(8f, 12f)
+        lineTo(15f, 5f)
+    }.build()
+}
 
 /** Điểm vào: gắn ViewModel vào màn hình Tài khoản. */
 @Composable
 fun ProfileRoute(
     viewModel: ProfileViewModel = viewModel(),
+    onBack: () -> Unit = {},
     onTabSelected: (HomeTab) -> Unit = {},
     onUpgradeClick: () -> Unit = {},
     onProtocolClick: () -> Unit = {},
     onLanguageClick: () -> Unit = {},
     onHelpClick: () -> Unit = {},
     onLogout: () -> Unit = {},
-    showBottomNav: Boolean = true,
+    showBottomNav: Boolean = false,
 ) {
     val state by viewModel.state.collectAsState()
     ProfileScreen(
-        state, viewModel::onAutoConnectChange, onUpgradeClick, onProtocolClick,
-        onLanguageClick, onHelpClick, onLogout, onTabSelected,
+        state = state,
+        onBack = onBack,
+        onAutoConnectChange = viewModel::onAutoConnectChange,
+        onUpgradeClick = onUpgradeClick,
+        onProtocolClick = onProtocolClick,
+        onLanguageClick = onLanguageClick,
+        onHelpClick = onHelpClick,
+        onLogout = onLogout,
+        onTabSelected = onTabSelected,
         showBottomNav = showBottomNav,
     )
 }
@@ -72,14 +103,15 @@ fun ProfileRoute(
 @Composable
 fun ProfileScreen(
     state: ProfileUiState,
-    onAutoConnectChange: (Boolean) -> Unit,
-    onUpgradeClick: () -> Unit,
-    onProtocolClick: () -> Unit,
-    onLanguageClick: () -> Unit,
-    onHelpClick: () -> Unit,
-    onLogout: () -> Unit,
-    onTabSelected: (HomeTab) -> Unit,
-    showBottomNav: Boolean = true,
+    onBack: () -> Unit = {},
+    onAutoConnectChange: (Boolean) -> Unit = {},
+    onUpgradeClick: () -> Unit = {},
+    onProtocolClick: () -> Unit = {},
+    onLanguageClick: () -> Unit = {},
+    onHelpClick: () -> Unit = {},
+    onLogout: () -> Unit = {},
+    onTabSelected: (HomeTab) -> Unit = {},
+    showBottomNav: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     val gradientEnd = with(LocalDensity.current) { 460.dp.toPx() }
@@ -89,8 +121,39 @@ fun ProfileScreen(
             .background(Brush.verticalGradient(listOf(C.HeaderTint, C.Background), startY = 0f, endY = gradientEnd))
             .statusBarsPadding(),
     ) {
+        // Thanh tiêu đề trên cùng với nút quay lại
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(56.dp)
+                .padding(horizontal = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .clickable(onClick = onBack),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = BackArrowIcon,
+                    contentDescription = "Quay lại",
+                    tint = C.Ink,
+                    modifier = Modifier.size(20.dp),
+                )
+            }
+            Text(
+                text = "Tài khoản",
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold,
+                color = C.Ink,
+                modifier = Modifier.padding(start = 8.dp),
+            )
+        }
+
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 24.dp)) {
-            ProfileHeader(state, Modifier.padding(top = 40.dp, bottom = 22.dp))
+            ProfileHeader(state, Modifier.padding(top = 16.dp, bottom = 22.dp))
             Surface(shape = RoundedCornerShape(18.dp), color = Color.White, shadowElevation = 3.dp, modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(horizontal = 18.dp, vertical = 2.dp)) {
                     SettingRow(Icons.Rounded.WorkspacePremium, "Gói hiện tại", Modifier.clickable(role = Role.Button, onClick = onUpgradeClick)) {

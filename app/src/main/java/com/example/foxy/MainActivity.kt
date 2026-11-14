@@ -152,53 +152,26 @@ class MainActivity : ComponentActivity() {
                                         }
                                     }
 
-                                    var currentTab by remember { mutableStateOf(HomeTab.Home) }
+                                    var showAccount by remember { mutableStateOf(false) }
 
                                     VeilTheme {
                                         androidx.compose.foundation.layout.Box(modifier = Modifier.fillMaxSize()) {
-                                            when (currentTab) {
-                                                HomeTab.Home -> {
-                                                    HomeRoute(
-                                                        viewModel     = vm,
-                                                        onServerClick = { showPicker = true },
-                                                        showBottomNav = false,
-                                                    )
-                                                }
-                                                HomeTab.Account -> {
-                                                    com.example.foxy.ui.profile.ProfileRoute(
-                                                        onLogout = {
-                                                            keyStore.clear()
-                                                            isActivated = false
-                                                        },
-                                                        showBottomNav = false,
-                                                    )
-                                                }
-                                                else -> {
-                                                    HomeRoute(
-                                                        viewModel     = vm,
-                                                        onServerClick = { showPicker = true },
-                                                        showBottomNav = false,
-                                                    )
-                                                }
-                                            }
-
-                                            // ═══ THANH ĐIỀU HƯỚNG DÙNG CHUNG CỐ ĐỊNH DUY NHẤT Ở ĐÁY ═══
-                                            androidx.compose.foundation.layout.Box(
-                                                modifier = Modifier
-                                                    .align(Alignment.BottomCenter)
-                                                    .fillMaxWidth()
-                                                    .padding(horizontal = 24.dp)
-                                                    .navigationBarsPadding()
-                                                    .padding(bottom = 16.dp)
-                                            ) {
-                                                com.example.foxy.ui.home.BottomNav(
-                                                    selected = currentTab,
-                                                    onSelect = { tab ->
-                                                        when (tab) {
-                                                            HomeTab.Servers -> showPicker = true
-                                                            else -> currentTab = tab
-                                                        }
-                                                    }
+                                            if (showAccount) {
+                                                com.example.foxy.ui.profile.ProfileRoute(
+                                                    onBack = { showAccount = false },
+                                                    onLogout = {
+                                                        keyStore.clear()
+                                                        isActivated = false
+                                                        showAccount = false
+                                                    },
+                                                    showBottomNav = false,
+                                                )
+                                            } else {
+                                                HomeRoute(
+                                                    viewModel     = vm,
+                                                    onMenuClick   = { showAccount = true },
+                                                    onServerClick = { showPicker = true },
+                                                    showBottomNav = false,
                                                 )
                                             }
                                         }

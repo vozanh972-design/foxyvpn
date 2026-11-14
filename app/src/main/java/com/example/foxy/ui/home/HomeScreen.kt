@@ -115,15 +115,17 @@ enum class HomeTab(val label: String, val icon: ImageVector) {
 @Composable
 fun HomeRoute(
     viewModel: HomeViewModel = viewModel(),
+    onMenuClick: () -> Unit = {},
     onUpgradeClick: () -> Unit = {},
     onServerClick: () -> Unit = {},
     onTabSelected: (HomeTab) -> Unit = {},
-    showBottomNav: Boolean = true,
+    showBottomNav: Boolean = false,
 ) {
     val state by viewModel.state.collectAsState()
     HomeScreen(
         state = state,
         onPowerClick = viewModel::onPowerClick,
+        onMenuClick = onMenuClick,
         onUpgradeClick = onUpgradeClick,
         onServerClick = onServerClick,
         onTabSelected = onTabSelected,
@@ -139,10 +141,11 @@ fun HomeRoute(
 fun HomeScreen(
     state: HomeUiState,
     onPowerClick: () -> Unit,
+    onMenuClick: () -> Unit = {},
     onUpgradeClick: () -> Unit = {},
     onServerClick: () -> Unit = {},
     onTabSelected: (HomeTab) -> Unit = {},
-    showBottomNav: Boolean = true,
+    showBottomNav: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     val isOn = state.status == ConnectionStatus.Connected
@@ -153,31 +156,11 @@ fun HomeScreen(
         isOn -> state.serverName
         else -> "Đang tắt"
     }
-    val headline = when {
-        isBusy -> "Chờ chút…"
-        isOn -> "Đang được bảo vệ"
-        else -> "Không được bảo vệ"
-    }
-    val description = when {
-        isBusy -> "Đang mở đường riêng tới ${state.serverName}."
-        isOn -> "Lưu lượng của bạn đã được mã hoá và đi qua ${state.serverName}."
-        else -> "Trang web và nhà mạng đều thấy địa chỉ thật của bạn."
-    }
     val caption = when {
         isBusy -> "Đang kết nối…"
         isOn -> "Chạm để tắt"
         else -> "Chạm để bật"
     }
-    val seenIp = if (isOn) state.ipAddress else RealIp
-
-    // Danh sách vị trí / game
-    val serverList = listOf(
-        state.selectedGame.displayName,
-        if (state.selectedGame == GameOption.FreeFire) "Free Fire Max" else "Free Fire",
-        "Singapore",
-        "Tokyo",
-        "Stockholm",
-    )
 
     Column(
         modifier = modifier
@@ -205,7 +188,7 @@ fun HomeScreen(
                 modifier = Modifier
                     .size(40.dp)
                     .clip(CircleShape)
-                    .clickable(onClick = onServerClick),
+                    .clickable(onClick = onMenuClick),
                 contentAlignment = Alignment.Center,
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -223,30 +206,14 @@ fun HomeScreen(
 
         // Trạng thái kết nối
         Column(modifier = Modifier.padding(start = 22.dp, end = 22.dp, top = 22.dp)) {
-            Text(text = statusLabel, color = Ink2, fontSize = 13.sp)
-            Text(
-                text = headline,
-                modifier = Modifier.padding(top = 6.dp),
-                color = if (isOn) Teal else Ink,
-                fontSize = 40.sp,
-                fontWeight = FontWeight.Normal,
-                letterSpacing = (-0.6).sp,
-                lineHeight = 44.sp,
-            )
-            Text(
-                text = description,
-                modifier = Modifier.padding(top = 10.dp),
-                color = Ink2,
-                fontSize = 15.sp,
-                lineHeight = 22.sp,
-            )
+            Text(text = statusLabel, color = Ink2, fontSize = 14.sp)
         }
 
         // Công tắc viên thuốc nằm ngang, căn giữa (PillSwitch)
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(top = 30.dp),
+                .padding(top = 40.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             PillSwitch(
@@ -262,77 +229,6 @@ fun HomeScreen(
             )
         }
 
-        // Hai ô IP, ngăn bằng đường kẻ dọc
-        Column(modifier = Modifier.padding(top = 34.dp)) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(1.dp)
-                    .background(LineSoft),
-            )
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(IntrinsicSize.Min),
-            ) {
-                Column(
-                    modifier = Modifier
-                        .weight(1f)
-                        .padding(horizontal = 22.dp, vertical = 16.dp),
-                ) {
-                    Text(text = "Địa chỉ của bạn", color = Ink3, fontSize = 12.sp)
-                    Text(
-                        text = RealIp,
-                        modifier = Modifier.padding(top = 6.dp),
-                        color = Ink,
-                        fontSize = 17.sp,
-                    )
-                }
-                Box(
-                    modifier = Modifier
-                        .width(1.dp)
-                        .fillMaxHeight()
-                        .background(LineSoft),
-                )
-                Column(
-                    modifier = Modifier
-                        .weight(1f)
-                        .padding(horizontal = 18.dp, vertical = 16.dp),
-                ) {
-                    Text(text = "Trang web đang thấy", color = Ink3, fontSize = 12.sp)
-                    Text(
-                        text = seenIp,
-                        modifier = Modifier.padding(top = 6.dp),
-                        color = if (isOn) Teal else Ink3,
-                        fontSize = 17.sp,
-                    )
-                }
-            }
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(1.dp)
-                    .background(LineSoft),
-            )
-        }
-
-        // Chọn vị trí: chip cuộn ngang
-        LazyRow(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 18.dp),
-            contentPadding = PaddingValues(horizontal = 22.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            itemsIndexed(serverList) { index, name ->
-                LocationChip(
-                    text = name,
-                    selected = index == 0,
-                    onClick = onServerClick,
-                )
-            }
-        }
-
         Spacer(Modifier.weight(1f))
 
         // Thời gian và dữ liệu
@@ -342,7 +238,7 @@ fun HomeScreen(
                 .fillMaxWidth()
                 .navigationBarsPadding()
                 .padding(horizontal = 22.dp)
-                .padding(bottom = if (showBottomNav) 80.dp else 16.dp),
+                .padding(bottom = 24.dp),
         ) {
             Box(
                 modifier = Modifier
@@ -372,12 +268,6 @@ fun HomeScreen(
                     color = Ink2,
                     fontSize = 14.sp,
                 )
-            }
-        }
-
-        if (showBottomNav) {
-            Box(Modifier.padding(horizontal = 24.dp).navigationBarsPadding().padding(bottom = 16.dp)) {
-                BottomNav(HomeTab.Home, onTabSelected)
             }
         }
     }
