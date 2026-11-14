@@ -181,7 +181,7 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private fun onVpnStopped() {
-        OverlayService.stop(getApplication())
+        // KHÔNG tắt OverlayService ở đây để màn nổi ngang vẫn duy trì khi ngắt kết nối
         connectTimeoutJob?.cancel()
         elapsedJob?.cancel()
         elapsedJob = null

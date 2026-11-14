@@ -145,7 +145,8 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner, ViewM
                             startService(Intent(this@OverlayService, FreefireVpnService::class.java).apply {
                                 action = FreefireVpnService.ACTION_STOP
                             })
-                            stopSelf()
+                            // KHÔNG gọi stopSelf() ở đây: giữ nguyên màn nổi ngang khi ngắt kết nối VPN
+                            // Chỉ đóng màn nổi khi người dùng bấm nút [X] (onDismissOverlay)
                         },
                         onDismissOverlay= { stopSelf() },
                         onPriorityChange= { checked -> stateFlow.update { it.copy(gamePriority = checked) } },

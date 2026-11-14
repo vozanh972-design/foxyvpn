@@ -149,17 +149,53 @@ class MainActivity : ComponentActivity() {
                                         }
                                     }
 
+                                    var currentTab by remember { mutableStateOf(HomeTab.Home) }
+
                                     VeilTheme {
-                                        HomeRoute(
-                                            viewModel     = vm,
-                                            onServerClick = { showPicker = true },
-                                            onTabSelected = { tab ->
-                                                when (tab) {
-                                                    HomeTab.Servers -> showPicker = true
-                                                    else -> Unit
-                                                }
-                                            },
-                                        )
+                                        when (currentTab) {
+                                            HomeTab.Home -> {
+                                                HomeRoute(
+                                                    viewModel     = vm,
+                                                    onServerClick = { showPicker = true },
+                                                    onTabSelected = { tab ->
+                                                        when (tab) {
+                                                            HomeTab.Servers -> showPicker = true
+                                                            HomeTab.Account -> currentTab = HomeTab.Account
+                                                            else -> currentTab = tab
+                                                        }
+                                                    },
+                                                )
+                                            }
+                                            HomeTab.Account -> {
+                                                com.example.foxy.ui.profile.ProfileRoute(
+                                                    onTabSelected = { tab ->
+                                                        when (tab) {
+                                                            HomeTab.Servers -> showPicker = true
+                                                            HomeTab.Home -> currentTab = HomeTab.Home
+                                                            else -> currentTab = tab
+                                                        }
+                                                    },
+                                                    onLogout = {
+                                                        keyStore.clear()
+                                                        isActivated = false
+                                                    },
+                                                )
+                                            }
+                                            else -> {
+                                                // Các tab khác (Servers, Premium)
+                                                HomeRoute(
+                                                    viewModel     = vm,
+                                                    onServerClick = { showPicker = true },
+                                                    onTabSelected = { tab ->
+                                                        when (tab) {
+                                                            HomeTab.Servers -> showPicker = true
+                                                            HomeTab.Account -> currentTab = HomeTab.Account
+                                                            else -> currentTab = tab
+                                                        }
+                                                    },
+                                                )
+                                            }
+                                        }
                                     }
 
                                     if (showPicker) {

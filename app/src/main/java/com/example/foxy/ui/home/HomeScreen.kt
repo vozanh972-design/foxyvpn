@@ -298,7 +298,7 @@ fun CountryFlag(code: String, size: Dp) {
 }
 
 @Composable
-private fun BottomNav(selected: HomeTab, onSelect: (HomeTab) -> Unit) {
+internal fun BottomNav(selected: HomeTab, onSelect: (HomeTab) -> Unit) {
     Row(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(30.dp)).background(C.NavBar).padding(8.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
