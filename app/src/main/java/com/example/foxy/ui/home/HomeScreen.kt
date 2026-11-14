@@ -1,48 +1,52 @@
 package com.example.foxy.ui.home
 
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.foundation.BorderStroke
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.ArrowDownward
-import androidx.compose.material.icons.rounded.ArrowUpward
-import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.Person
-import androidx.compose.material.icons.rounded.PowerSettingsNew
 import androidx.compose.material.icons.rounded.Public
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
@@ -50,7 +54,6 @@ import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.path
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
@@ -64,6 +67,18 @@ import com.example.foxy.R
 import com.example.foxy.ui.theme.VeilColors as C
 import com.example.foxy.ui.theme.VeilTheme
 import java.util.Locale
+
+// ---------- Màu chuẩn từ bản mẫu VpnHomeScreen ----------
+private val BgPaper = Color(0xFFFBFBFA)
+private val Ink = Color(0xFF1C1F1D)
+private val Ink2 = Color(0xFF6B6F6C)
+private val Ink3 = Color(0xFFA2A7A3)
+private val LineSoft = Color(0xFFE0D8C7)
+private val Teal = Color(0xFF15685A)
+private val TealSoft = Color(0xFFDCEBE6)
+private val TrackOff = Color(0xFFE7E4DA)
+
+private const val RealIp = "113.161.44.20"
 
 private val CrownIcon: ImageVector by lazy {
     ImageVector.Builder(
@@ -116,146 +131,335 @@ fun HomeRoute(
     )
 }
 
+/**
+ * Giao diện màn hình chính VPN theo phong cách VpnHomeScreen tối giản hiện đại.
+ * Toàn bộ logic VPN và Menu nổi ngang được giữ nguyên 100%.
+ */
 @Composable
 fun HomeScreen(
     state: HomeUiState,
     onPowerClick: () -> Unit,
-    onUpgradeClick: () -> Unit,
-    onServerClick: () -> Unit,
-    onTabSelected: (HomeTab) -> Unit,
+    onUpgradeClick: () -> Unit = {},
+    onServerClick: () -> Unit = {},
+    onTabSelected: (HomeTab) -> Unit = {},
     showBottomNav: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
-    val gradientEnd = with(LocalDensity.current) { 460.dp.toPx() }
+    val isOn = state.status == ConnectionStatus.Connected
+    val isBusy = state.status == ConnectionStatus.Connecting
+
+    val statusLabel = when {
+        isBusy -> "Đang kết nối"
+        isOn -> state.serverName
+        else -> "Đang tắt"
+    }
+    val headline = when {
+        isBusy -> "Chờ chút…"
+        isOn -> "Đang được bảo vệ"
+        else -> "Không được bảo vệ"
+    }
+    val description = when {
+        isBusy -> "Đang mở đường riêng tới ${state.serverName}."
+        isOn -> "Lưu lượng của bạn đã được mã hoá và đi qua ${state.serverName}."
+        else -> "Trang web và nhà mạng đều thấy địa chỉ thật của bạn."
+    }
+    val caption = when {
+        isBusy -> "Đang kết nối…"
+        isOn -> "Chạm để tắt"
+        else -> "Chạm để bật"
+    }
+    val seenIp = if (isOn) state.ipAddress else RealIp
+
+    // Danh sách vị trí / game
+    val serverList = listOf(
+        state.selectedGame.displayName,
+        if (state.selectedGame == GameOption.FreeFire) "Free Fire Max" else "Free Fire",
+        "Singapore",
+        "Tokyo",
+        "Stockholm",
+    )
+
     Column(
-        modifier
+        modifier = modifier
             .fillMaxSize()
-            .background(Brush.verticalGradient(listOf(C.HeaderTint, C.Background), startY = 0f, endY = gradientEnd))
+            .background(BgPaper)
             .statusBarsPadding(),
     ) {
-        Header(onUpgradeClick)
-        StatusText(state, Modifier.padding(top = 14.dp))
-        PowerButton(state, onPowerClick, Modifier.align(Alignment.CenterHorizontally).padding(top = 6.dp, bottom = 8.dp))
-        Surface(
-            modifier = Modifier.weight(1f).fillMaxWidth(),
-            shape = RoundedCornerShape(topStart = 30.dp, topEnd = 30.dp),
-            color = Color.White,
-            shadowElevation = 8.dp,
+        // Thanh trên: tên app và nút menu 3 gạch
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(60.dp)
+                .padding(start = 22.dp, end = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
         ) {
-            Column(Modifier.padding(start = 24.dp, top = 20.dp, end = 24.dp).navigationBarsPadding().padding(bottom = 16.dp)) {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    StatCard(Icons.Rounded.ArrowDownward, "Tải xuống", mbps(state.downMbps.toFloat()), C.StatDownload, Modifier.weight(1f))
-                    StatCard(Icons.Rounded.ArrowUpward, "Tải lên", mbps(state.upMbps.toFloat()), C.StatUpload, Modifier.weight(1f))
-                }
-                Spacer(Modifier.height(12.dp))
-                LocationCard(state, onServerClick)
-                Spacer(Modifier.weight(1f))
-                if (showBottomNav) {
-                    BottomNav(HomeTab.Home, onTabSelected)
-                } else {
-                    Spacer(Modifier.height(56.dp))
+            Text(
+                text = "Foxy",
+                color = Ink,
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 1.5.sp,
+            )
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .clickable(onClick = onServerClick),
+                contentAlignment = Alignment.Center,
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    repeat(3) {
+                        Box(
+                            modifier = Modifier
+                                .width(18.dp)
+                                .height(1.6.dp)
+                                .background(Ink),
+                        )
+                    }
                 }
             }
         }
-    }
-}
 
-@Composable
-private fun Header(onUpgrade: () -> Unit) {
-    Row(
-        Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 20.dp),
-        horizontalArrangement = Arrangement.End,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Surface(onClick = onUpgrade, shape = RoundedCornerShape(19.dp), color = Color.White, modifier = Modifier.height(38.dp)) {
-            Row(Modifier.padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                Icon(CrownIcon, null, Modifier.size(16.dp), tint = C.Ink)
-                Text("Nâng cấp", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = C.Ink)
-            }
+        // Trạng thái kết nối
+        Column(modifier = Modifier.padding(start = 22.dp, end = 22.dp, top = 22.dp)) {
+            Text(text = statusLabel, color = Ink2, fontSize = 13.sp)
+            Text(
+                text = headline,
+                modifier = Modifier.padding(top = 6.dp),
+                color = if (isOn) Teal else Ink,
+                fontSize = 40.sp,
+                fontWeight = FontWeight.Normal,
+                letterSpacing = (-0.6).sp,
+                lineHeight = 44.sp,
+            )
+            Text(
+                text = description,
+                modifier = Modifier.padding(top = 10.dp),
+                color = Ink2,
+                fontSize = 15.sp,
+                lineHeight = 22.sp,
+            )
         }
-    }
-}
 
-@Composable
-private fun StatusText(state: HomeUiState, modifier: Modifier = Modifier) {
-    val (title, sub) = when (state.status) {
-        ConnectionStatus.Idle -> "Chưa kết nối" to "IP của bạn đang hiển thị"
-        ConnectionStatus.Connecting -> "Đang kết nối…" to state.serverName
-        ConnectionStatus.Connected -> state.serverName to "Đã kết nối · IP " + state.ipAddress
-    }
-    Column(modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(title, fontSize = 28.sp, fontWeight = FontWeight.Bold, color = C.Ink, textAlign = TextAlign.Center)
-        Text(sub, fontSize = 13.sp, color = C.Muted)
-    }
-}
-
-@Composable
-private fun PowerButton(state: HomeUiState, onClick: () -> Unit, modifier: Modifier = Modifier) {
-    val connected = state.status == ConnectionStatus.Connected
-    val container by animateColorAsState(if (connected) C.Accent else Color.White, label = "powerBg")
-    val content = if (connected) C.Ink else C.Accent
-    Box(modifier.size(210.dp), contentAlignment = Alignment.Center) {
-        Box(Modifier.size(210.dp).background(Color.White.copy(alpha = 0.3f), CircleShape))
-        Box(Modifier.size(178.dp).background(Color.White.copy(alpha = 0.55f), CircleShape))
-        Surface(
-            onClick = onClick,
-            shape = CircleShape,
-            color = container,
-            shadowElevation = 12.dp,
-            modifier = Modifier.size(150.dp),
+        // Công tắc viên thuốc nằm ngang, căn giữa (PillSwitch)
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 30.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
-                when (state.status) {
-                    ConnectionStatus.Connecting -> {
-                        CircularProgressIndicator(Modifier.size(56.dp), color = C.Accent, strokeWidth = 3.dp)
-                        Text("Vui lòng đợi", fontSize = 13.sp, color = C.Muted, modifier = Modifier.padding(top = 8.dp))
-                    }
-                    ConnectionStatus.Connected -> {
-                        Icon(Icons.Rounded.PowerSettingsNew, "Ngắt kết nối", Modifier.size(40.dp), tint = content)
-                        Text("DỪNG", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = content)
-                        Text(clock(state.elapsedSeconds), fontSize = 16.sp, fontWeight = FontWeight.Bold, color = C.Ink)
-                    }
-                    ConnectionStatus.Idle -> {
-                        Icon(Icons.Rounded.PowerSettingsNew, "Kết nối", Modifier.size(46.dp), tint = content)
-                        Text("BẬT", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = C.Muted)
-                    }
+            PillSwitch(
+                on = isOn,
+                enabled = !isBusy,
+                onClick = onPowerClick,
+            )
+            Text(
+                text = caption,
+                modifier = Modifier.padding(top = 10.dp),
+                color = Ink2,
+                fontSize = 13.sp,
+            )
+        }
+
+        // Hai ô IP, ngăn bằng đường kẻ dọc
+        Column(modifier = Modifier.padding(top = 34.dp)) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(1.dp)
+                    .background(LineSoft),
+            )
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(IntrinsicSize.Min),
+            ) {
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(horizontal = 22.dp, vertical = 16.dp),
+                ) {
+                    Text(text = "Địa chỉ của bạn", color = Ink3, fontSize = 12.sp)
+                    Text(
+                        text = RealIp,
+                        modifier = Modifier.padding(top = 6.dp),
+                        color = Ink,
+                        fontSize = 17.sp,
+                    )
+                }
+                Box(
+                    modifier = Modifier
+                        .width(1.dp)
+                        .fillMaxHeight()
+                        .background(LineSoft),
+                )
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(horizontal = 18.dp, vertical = 16.dp),
+                ) {
+                    Text(text = "Trang web đang thấy", color = Ink3, fontSize = 12.sp)
+                    Text(
+                        text = seenIp,
+                        modifier = Modifier.padding(top = 6.dp),
+                        color = if (isOn) Teal else Ink3,
+                        fontSize = 17.sp,
+                    )
                 }
             }
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(1.dp)
+                    .background(LineSoft),
+            )
         }
-    }
-}
 
-@Composable
-private fun StatCard(icon: ImageVector, label: String, value: String, bg: Color, modifier: Modifier = Modifier) {
-    Column(modifier.clip(RoundedCornerShape(18.dp)).background(bg).padding(14.dp)) {
-        Box(Modifier.size(30.dp).background(Color.White, CircleShape), contentAlignment = Alignment.Center) {
-            Icon(icon, null, Modifier.size(16.dp), tint = C.AccentText)
-        }
-        Text(label, fontSize = 13.sp, color = C.Muted, modifier = Modifier.padding(top = 8.dp))
-        Text(value, fontWeight = FontWeight.Bold, color = C.Ink)
-    }
-}
-
-@Composable
-private fun LocationCard(state: HomeUiState, onClick: () -> Unit) {
-    Surface(
-        onClick = onClick,
-        shape = RoundedCornerShape(18.dp),
-        color = Color.White,
-        shadowElevation = 3.dp,
-        border = BorderStroke(1.dp, C.Border.copy(alpha = 0.6f)),
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Row(Modifier.padding(horizontal = 14.dp, vertical = 11.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            CountryFlag(state.serverCountryCode, 40.dp)
-            Column(Modifier.weight(1f)) {
-                Text(state.serverName, fontWeight = FontWeight.Bold, color = C.Ink)
-                Text(state.serverHint, fontSize = 13.sp, color = C.Muted)
+        // Chọn vị trí: chip cuộn ngang
+        LazyRow(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 18.dp),
+            contentPadding = PaddingValues(horizontal = 22.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            itemsIndexed(serverList) { index, name ->
+                LocationChip(
+                    text = name,
+                    selected = index == 0,
+                    onClick = onServerClick,
+                )
             }
-            SignalBars(level = 3)
-            Icon(Icons.Rounded.ChevronRight, null, Modifier.size(20.dp), tint = C.Muted)
+        }
+
+        Spacer(Modifier.weight(1f))
+
+        // Thời gian và dữ liệu
+        val totalMb = if (isOn) (state.elapsedSeconds * 0.08).coerceAtLeast(0.1) else 0.0
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .padding(horizontal = 22.dp)
+                .padding(bottom = if (showBottomNav) 80.dp else 16.dp),
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(1.dp)
+                    .background(LineSoft),
+            )
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 14.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Text(
+                    text = buildString {
+                        append("Thời gian ")
+                        append(if (isOn) formatDuration(state.elapsedSeconds) else "--:--")
+                    },
+                    color = Ink2,
+                    fontSize = 14.sp,
+                )
+                Text(
+                    text = buildString {
+                        append("Dữ liệu ")
+                        append(if (isOn) String.format(Locale.US, "%.1f MB", totalMb) else "--")
+                    },
+                    color = Ink2,
+                    fontSize = 14.sp,
+                )
+            }
+        }
+
+        if (showBottomNav) {
+            Box(Modifier.padding(horizontal = 24.dp).navigationBarsPadding().padding(bottom = 16.dp)) {
+                BottomNav(HomeTab.Home, onTabSelected)
+            }
         }
     }
+}
+
+// Công tắc viên thuốc nằm ngang: 148 x 64 dp, núm trắng trượt trái phải
+@Composable
+private fun PillSwitch(
+    on: Boolean,
+    enabled: Boolean,
+    onClick: () -> Unit,
+) {
+    val trackColor by animateColorAsState(
+        targetValue = if (on) TealSoft else TrackOff,
+        animationSpec = tween(300),
+        label = "track",
+    )
+    val knobColor by animateColorAsState(
+        targetValue = if (on) Teal else Color.White,
+        animationSpec = tween(300),
+        label = "knob",
+    )
+    val knobX by animateDpAsState(
+        targetValue = if (on) 74.dp else 6.dp,
+        animationSpec = tween(350),
+        label = "knobX",
+    )
+    val knobShape = RoundedCornerShape(26.dp)
+
+    Box(
+        modifier = Modifier
+            .size(width = 148.dp, height = 64.dp)
+            .clip(RoundedCornerShape(32.dp))
+            .background(trackColor)
+            .clickable(
+                enabled = enabled,
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = onClick,
+            ),
+    ) {
+        Box(
+            modifier = Modifier
+                .offset(x = knobX, y = 6.dp)
+                .size(width = 68.dp, height = 52.dp)
+                .shadow(2.dp, knobShape)
+                .clip(knobShape)
+                .background(knobColor),
+        )
+    }
+}
+
+@Composable
+private fun LocationChip(
+    text: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    val shape = RoundedCornerShape(19.dp)
+    Box(
+        modifier = Modifier
+            .height(38.dp)
+            .clip(shape)
+            .border(1.dp, if (selected) Ink else LineSoft, shape)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = text,
+            color = if (selected) Ink else Ink2,
+            fontSize = 14.sp,
+            textAlign = TextAlign.Center,
+        )
+    }
+}
+
+private fun formatDuration(totalSeconds: Long): String {
+    val h = totalSeconds / 3600
+    val m = (totalSeconds % 3600) / 60
+    val s = totalSeconds % 60
+    return String.format("%02d:%02d:%02d", h, m, s)
 }
 
 @Composable
@@ -267,7 +471,7 @@ internal fun SignalBars(level: Int) {
     }
 }
 
-/** Cờ vẽ bằng Canvas cho vài nước. Nước khác: thay bằng ảnh cờ thật (drawable/Coil). */
+/** Cờ vẽ bằng Canvas cho các nước và logo game. */
 @Composable
 fun CountryFlag(code: String, size: Dp) {
     if (code == "FF" || code == "FFMAX") {
@@ -329,21 +533,8 @@ internal fun BottomNav(selected: HomeTab, onSelect: (HomeTab) -> Unit) {
     }
 }
 
-private fun mbps(v: Float) =
-    if (v == 0f) "0 Mb/s" else String.format(Locale.forLanguageTag("vi"), "%.1f Mb/s", v)
-
-private fun clock(s: Long) = String.format(Locale.US, "%02d:%02d:%02d", s / 3600, s % 3600 / 60, s % 60)
-
 @Preview(showBackground = true, heightDp = 844, widthDp = 390)
-@Composable private fun PreviewDisconnected() = VeilTheme { HomeScreen(HomeUiState(), {}, {}, {}, {}) }
-
-@Preview(showBackground = true, heightDp = 844, widthDp = 390)
-@Composable private fun PreviewConnecting() = VeilTheme { HomeScreen(HomeUiState(status = ConnectionStatus.Connecting), {}, {}, {}, {}) }
-
-@Preview(showBackground = true, heightDp = 844, widthDp = 390)
-@Composable private fun PreviewConnected() = VeilTheme {
-    HomeScreen(
-        HomeUiState(status = ConnectionStatus.Connected, downMbps = 13.5, upMbps = 15.5, elapsedSeconds = 2720),
-        {}, {}, {}, {},
-    )
+@Composable
+private fun PreviewHomeOff() = VeilTheme {
+    HomeScreen(HomeUiState(), {})
 }

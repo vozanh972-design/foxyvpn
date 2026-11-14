@@ -496,7 +496,7 @@ fun EnterKeyScreen(
             )
 
             Text(
-                text = if (valid) "Key hợp lệ" else "Gồm 12 ký tự, chia thành 3 nhóm.",
+                text = if (valid) "" else "Gồm 12 ký tự, chia thành 3 nhóm.",
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(top = 12.dp),
