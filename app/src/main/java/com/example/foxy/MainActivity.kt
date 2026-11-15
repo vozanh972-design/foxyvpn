@@ -154,12 +154,15 @@ class MainActivity : ComponentActivity() {
 
                                     var showSettings by remember { mutableStateOf(false) }
                                     var showAccount by remember { mutableStateOf(false) }
+                                    val currentKey = remember(showSettings, showAccount, isActivated) { keyStore.get() ?: "" }
+                                    val isVip = currentKey.contains("VIP", ignoreCase = true) || currentKey.contains("PRO", ignoreCase = true)
 
                                     VeilTheme {
                                         androidx.compose.foundation.layout.Box(modifier = Modifier.fillMaxSize()) {
                                             when {
                                                 showAccount -> {
                                                     com.example.foxy.ui.profile.ProfileRoute(
+                                                        licenseKey = currentKey,
                                                         onBack = { showAccount = false },
                                                         onLogout = {
                                                             keyStore.clear()
@@ -176,6 +179,7 @@ class MainActivity : ComponentActivity() {
                                                         onSelectGame = { vm.selectGame(it) },
                                                         onAccountClick = { showAccount = true },
                                                         onBack = { showSettings = false },
+                                                        isVip = isVip,
                                                     )
                                                 }
                                                 else -> {

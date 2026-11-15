@@ -204,9 +204,9 @@ fun HomeScreen(
             }
         }
 
-        Spacer(Modifier.weight(0.8f))
+        Spacer(Modifier.weight(0.35f))
 
-        // Cụm công tắc viên thuốc nằm ngang, căn giữa hoàn toàn
+        // Cụm công tắc viên thuốc nằm ngang, căn giữa hoàn toàn, đẩy lên trên
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -219,7 +219,7 @@ fun HomeScreen(
                 fontSize = 16.sp,
                 fontWeight = FontWeight.Medium,
                 textAlign = TextAlign.Center,
-                modifier = Modifier.padding(bottom = 28.dp),
+                modifier = Modifier.padding(bottom = 24.dp),
             )
             PillSwitch(
                 on = isOn,
@@ -235,7 +235,7 @@ fun HomeScreen(
             )
         }
 
-        Spacer(Modifier.weight(1.2f))
+        Spacer(Modifier.weight(1.65f))
 
         // Thời gian ở chân trang (đã bỏ phần dữ liệu)
         Column(

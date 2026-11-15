@@ -92,6 +92,7 @@ fun SettingsScreen(
     onSelectGame: (GameOption) -> Unit,
     onAccountClick: () -> Unit,
     onBack: () -> Unit,
+    isVip: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -187,13 +188,17 @@ fun SettingsScreen(
             ) {
                 Column {
                     Text(
-                        text = "Foxy VIP Activated",
+                        text = if (isVip) "Foxy VIP Activated" else "Foxy Free Activated",
                         color = Color.White,
                         fontSize = 17.sp,
                         fontWeight = FontWeight.Bold,
                     )
                     Text(
-                        text = "Đã kích hoạt gói đường truyền ưu tiên tốc độ cao và ổn định.",
+                        text = if (isVip) {
+                            "Đã kích hoạt gói đường truyền ưu tiên tốc độ cao và ổn định."
+                        } else {
+                            "Đã kích hoạt gói đường truyền miễn phí."
+                        },
                         color = Color.White.copy(alpha = 0.9f),
                         fontSize = 13.sp,
                         modifier = Modifier.padding(top = 4.dp),
