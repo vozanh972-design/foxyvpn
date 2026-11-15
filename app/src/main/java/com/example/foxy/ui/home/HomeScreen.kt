@@ -204,18 +204,23 @@ fun HomeScreen(
             }
         }
 
-        // Trạng thái kết nối
-        Column(modifier = Modifier.padding(start = 22.dp, end = 22.dp, top = 22.dp)) {
-            Text(text = statusLabel, color = Ink2, fontSize = 14.sp)
-        }
+        Spacer(Modifier.weight(0.8f))
 
-        // Công tắc viên thuốc nằm ngang, căn giữa (PillSwitch)
+        // Cụm công tắc viên thuốc nằm ngang, căn giữa hoàn toàn
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(top = 40.dp),
+                .padding(horizontal = 24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
+            Text(
+                text = statusLabel,
+                color = Ink2,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Medium,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(bottom = 28.dp),
+            )
             PillSwitch(
                 on = isOn,
                 enabled = !isBusy,
@@ -223,16 +228,16 @@ fun HomeScreen(
             )
             Text(
                 text = caption,
-                modifier = Modifier.padding(top = 10.dp),
+                modifier = Modifier.padding(top = 14.dp),
                 color = Ink2,
                 fontSize = 13.sp,
+                textAlign = TextAlign.Center,
             )
         }
 
-        Spacer(Modifier.weight(1f))
+        Spacer(Modifier.weight(1.2f))
 
-        // Thời gian và dữ liệu
-        val totalMb = if (isOn) (state.elapsedSeconds * 0.08).coerceAtLeast(0.1) else 0.0
+        // Thời gian ở chân trang (đã bỏ phần dữ liệu)
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -246,24 +251,15 @@ fun HomeScreen(
                     .height(1.dp)
                     .background(LineSoft),
             )
-            Row(
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(vertical = 14.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
             ) {
                 Text(
                     text = buildString {
                         append("Thời gian ")
                         append(if (isOn) formatDuration(state.elapsedSeconds) else "--:--")
-                    },
-                    color = Ink2,
-                    fontSize = 14.sp,
-                )
-                Text(
-                    text = buildString {
-                        append("Dữ liệu ")
-                        append(if (isOn) String.format(Locale.US, "%.1f MB", totalMb) else "--")
                     },
                     color = Ink2,
                     fontSize = 14.sp,

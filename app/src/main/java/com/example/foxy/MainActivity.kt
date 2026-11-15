@@ -152,27 +152,40 @@ class MainActivity : ComponentActivity() {
                                         }
                                     }
 
+                                    var showSettings by remember { mutableStateOf(false) }
                                     var showAccount by remember { mutableStateOf(false) }
 
                                     VeilTheme {
                                         androidx.compose.foundation.layout.Box(modifier = Modifier.fillMaxSize()) {
-                                            if (showAccount) {
-                                                com.example.foxy.ui.profile.ProfileRoute(
-                                                    onBack = { showAccount = false },
-                                                    onLogout = {
-                                                        keyStore.clear()
-                                                        isActivated = false
-                                                        showAccount = false
-                                                    },
-                                                    showBottomNav = false,
-                                                )
-                                            } else {
-                                                HomeRoute(
-                                                    viewModel     = vm,
-                                                    onMenuClick   = { showAccount = true },
-                                                    onServerClick = { showPicker = true },
-                                                    showBottomNav = false,
-                                                )
+                                            when {
+                                                showAccount -> {
+                                                    com.example.foxy.ui.profile.ProfileRoute(
+                                                        onBack = { showAccount = false },
+                                                        onLogout = {
+                                                            keyStore.clear()
+                                                            isActivated = false
+                                                            showAccount = false
+                                                            showSettings = false
+                                                        },
+                                                        showBottomNav = false,
+                                                    )
+                                                }
+                                                showSettings -> {
+                                                    com.example.foxy.ui.settings.SettingsScreen(
+                                                        selectedGame = homeState.selectedGame,
+                                                        onSelectGame = { vm.selectGame(it) },
+                                                        onAccountClick = { showAccount = true },
+                                                        onBack = { showSettings = false },
+                                                    )
+                                                }
+                                                else -> {
+                                                    HomeRoute(
+                                                        viewModel     = vm,
+                                                        onMenuClick   = { showSettings = true },
+                                                        onServerClick = { showSettings = true },
+                                                        showBottomNav = false,
+                                                    )
+                                                }
                                             }
                                         }
                                     }
