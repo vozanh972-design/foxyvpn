@@ -325,19 +325,26 @@ class PacketTunnelEngine(
         val dp  = DatagramPacket(buf, buf.size)
         try {
             while (running.get()) {
+                dp.length = buf.size  // BẮT BUỘC RESET SIZE: Tránh DatagramSocket làm cắt cụt các gói tin sau gói ngắn!
                 flow.socket?.receive(dp) ?: break
                 val n          = dp.length
                 val data       = buf.copyOf(n)
                 val serverIp   = dp.address?.hostAddress ?: continue
                 val serverPort = dp.port
 
-                // === ESP detection (inbound: server → game) ===
-                try { GameProtocolEngine.processUdp(flowKey, data, false) } catch (_: Exception) {}
-                val modified = try { PoseFreezeEngine.process(flowKey, data, false) } catch (_: Exception) { null }
-                val out = modified ?: data
+                val isDns = serverPort == 53 || clientPort == 53
+                if (!isDns) {
+                    // === ESP detection (inbound: server → game) ===
+                    try { GameProtocolEngine.processUdp(flowKey, data, false) } catch (_: Exception) {}
+                    val modified = try { PoseFreezeEngine.process(flowKey, data, false) } catch (_: Exception) { null }
+                    val out = modified ?: data
 
-                // Inject về TUN
-                writeTun(buildUdpPkt(serverIp, serverPort, clientIp, clientPort, out))
+                    // Inject về TUN
+                    writeTun(buildUdpPkt(serverIp, serverPort, clientIp, clientPort, out))
+                } else {
+                    // DNS response: chuyển tiếp nguyên bản 100% về TUN, chống hỏng DNS game
+                    writeTun(buildUdpPkt(serverIp, serverPort, clientIp, clientPort, data))
+                }
                 flow.lastUsed = System.currentTimeMillis()
             }
         } catch (e: SocketTimeoutException) {
