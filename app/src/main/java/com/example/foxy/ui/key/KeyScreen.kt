@@ -61,12 +61,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 
-// ---------- Màu (lấy đúng từ bản mẫu) ----------
-private val BgPaper = Color(0xFFFBFBFA)
-private val Ink = Color(0xFF1C1F1D)
-private val Ink2 = Color(0xFF6B6F6C)
-private val LineSoft = Color(0xFFE4E2DC)
-private val CardShadow = Color(0x551E0A3C)
+// ---------- Màu chuẩn phong cách 1.1.1.1 Cloudflare ----------
+private val BgPaper = Color(0xFFFFFFFF)
+private val Ink = Color(0xFF1A1A1A)
+private val Ink2 = Color(0xFF757575)
+private val LineSoft = Color(0xFFEBEAE6)
+private val CardShadow = Color(0x331E0A3C)
 private val PlaceholderGrey = Color(0xFF9A9D98)
 
 // Key hợp lệ: 3 nhóm, mỗi nhóm 4 ký tự chữ hoặc số, nối bằng gạch ngang

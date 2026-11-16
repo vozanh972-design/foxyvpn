@@ -68,46 +68,17 @@ import com.example.foxy.ui.theme.VeilColors as C
 import com.example.foxy.ui.theme.VeilTheme
 import java.util.Locale
 
-// ---------- Màu chuẩn từ bản mẫu VpnHomeScreen ----------
-private val BgPaper = Color(0xFFFBFBFA)
-private val Ink = Color(0xFF1C1F1D)
-private val Ink2 = Color(0xFF6B6F6C)
-private val Ink3 = Color(0xFFA2A7A3)
-private val LineSoft = Color(0xFFE0D8C7)
-private val Teal = Color(0xFF15685A)
-private val TealSoft = Color(0xFFDCEBE6)
-private val TrackOff = Color(0xFFE7E4DA)
-
-private const val RealIp = "113.161.44.20"
-
-private val CrownIcon: ImageVector by lazy {
-    ImageVector.Builder(
-        name = "Crown",
-        defaultWidth = 24.dp,
-        defaultHeight = 24.dp,
-        viewportWidth = 24f,
-        viewportHeight = 24f,
-    ).path(
-        stroke = SolidColor(Color.Black),
-        strokeLineWidth = 1.9f,
-        strokeLineCap = StrokeCap.Round,
-        strokeLineJoin = StrokeJoin.Round,
-    ) {
-        moveTo(4f, 18f)
-        lineTo(3f, 8f)
-        lineTo(8.5f, 12.5f)
-        lineTo(12f, 5.5f)
-        lineTo(15.5f, 12.5f)
-        lineTo(21f, 8f)
-        lineTo(20f, 18f)
-        close()
-    }.build()
-}
+// ---------- Màu chuẩn phong cách 1.1.1.1 Cloudflare kết hợp nhận diện Foxy ----------
+private val BgWhite = Color(0xFFFFFFFF)
+private val Ink = Color(0xFF1A1A1A)
+private val Ink2 = Color(0xFF757575)
+private val LineSoft = Color(0xFFEBEAE6)
+private val FoxyOrange = Color(0xFFF24C00)
+private val TrackOff = Color(0xFFE7E7EC)
 
 enum class HomeTab(val label: String, val icon: ImageVector) {
     Home("Trang chủ", Icons.Rounded.Home),
     Servers("Máy chủ", Icons.Rounded.Public),
-    Premium("Premium", CrownIcon),
     Account("Tài khoản", Icons.Rounded.Person),
 }
 
@@ -133,10 +104,6 @@ fun HomeRoute(
     )
 }
 
-/**
- * Giao diện màn hình chính VPN theo phong cách VpnHomeScreen tối giản hiện đại.
- * Toàn bộ logic VPN và Menu nổi ngang được giữ nguyên 100%.
- */
 @Composable
 fun HomeScreen(
     state: HomeUiState,
@@ -151,52 +118,66 @@ fun HomeScreen(
     val isOn = state.status == ConnectionStatus.Connected
     val isBusy = state.status == ConnectionStatus.Connecting
 
-    val statusLabel = when {
-        isBusy -> "Đang kết nối"
-        isOn -> state.serverName
-        else -> "Đang tắt"
+    val statusHeadline = when {
+        isBusy -> "Đang kết nối..."
+        isOn -> "Đã kết nối"
+        else -> "Đã ngắt kết nối"
     }
-    val caption = when {
-        isBusy -> "Đang kết nối…"
-        isOn -> "Chạm để tắt"
-        else -> "Chạm để bật"
+
+    val statusSubtitle = when {
+        isBusy -> "Vui lòng đợi trong giây lát"
+        isOn -> "Đang tối ưu đường truyền cho ${state.serverName}"
+        else -> "Chạm vào công tắc để bật Foxy"
     }
 
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(BgPaper)
+            .background(BgWhite)
             .statusBarsPadding(),
     ) {
-        // Thanh trên: tên app và nút menu 3 gạch
+        // Top Bar phong cách 1.1.1.1: Logo Foxy góc trái, Nút 3 gạch góc phải
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(60.dp)
-                .padding(start = 22.dp, end = 12.dp),
+                .height(64.dp)
+                .padding(horizontal = 20.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
-            Text(
-                text = "Foxy",
-                color = Ink,
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 1.5.sp,
-            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Image(
+                    painter = painterResource(R.drawable.ic_foxy_mark),
+                    contentDescription = "Logo Foxy",
+                    modifier = Modifier.size(width = 20.dp, height = 28.dp),
+                    contentScale = ContentScale.Fit,
+                )
+                Text(
+                    text = "FOXY",
+                    color = Ink,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Black,
+                    letterSpacing = 2.sp,
+                )
+            }
+
             Box(
                 modifier = Modifier
-                    .size(40.dp)
+                    .size(44.dp)
                     .clip(CircleShape)
                     .clickable(onClick = onMenuClick),
                 contentAlignment = Alignment.Center,
             ) {
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(4.5.dp)) {
                     repeat(3) {
                         Box(
                             modifier = Modifier
-                                .width(18.dp)
-                                .height(1.6.dp)
+                                .width(20.dp)
+                                .height(2.dp)
+                                .clip(RoundedCornerShape(1.dp))
                                 .background(Ink),
                         )
                     }
@@ -204,46 +185,51 @@ fun HomeScreen(
             }
         }
 
-        Spacer(Modifier.weight(0.35f))
+        Spacer(Modifier.weight(0.45f))
 
-        // Cụm công tắc viên thuốc nằm ngang, căn giữa hoàn toàn, đẩy lên trên
+        // Trung tâm: Công tắc Switch lớn + Trạng thái chữ to rõ của 1.1.1.1
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Text(
-                text = statusLabel,
-                color = Ink2,
-                fontSize = 16.sp,
-                fontWeight = FontWeight.Medium,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.padding(bottom = 24.dp),
-            )
             PillSwitch(
                 on = isOn,
                 enabled = !isBusy,
                 onClick = onPowerClick,
             )
+
+            Spacer(Modifier.height(32.dp))
+
             Text(
-                text = caption,
-                modifier = Modifier.padding(top = 14.dp),
+                text = statusHeadline,
+                color = if (isOn) FoxyOrange else Ink,
+                fontSize = 22.sp,
+                fontWeight = FontWeight.Bold,
+                textAlign = TextAlign.Center,
+            )
+
+            Spacer(Modifier.height(8.dp))
+
+            Text(
+                text = statusSubtitle,
                 color = Ink2,
-                fontSize = 13.sp,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Normal,
                 textAlign = TextAlign.Center,
             )
         }
 
-        Spacer(Modifier.weight(1.65f))
+        Spacer(Modifier.weight(1.55f))
 
-        // Thời gian ở chân trang (đã bỏ phần dữ liệu)
+        // Chân trang: Đường kẻ mỏng thanh lịch + Thời gian kết nối
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .navigationBarsPadding()
-                .padding(horizontal = 22.dp)
-                .padding(bottom = 24.dp),
+                .padding(horizontal = 24.dp)
+                .padding(bottom = 20.dp),
         ) {
             Box(
                 modifier = Modifier
@@ -251,25 +237,30 @@ fun HomeScreen(
                     .height(1.dp)
                     .background(LineSoft),
             )
-            Box(
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(vertical = 14.dp),
+                    .padding(vertical = 16.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    text = buildString {
-                        append("Thời gian ")
-                        append(if (isOn) formatDuration(state.elapsedSeconds) else "--:--")
-                    },
+                    text = "Thời gian kết nối",
                     color = Ink2,
-                    fontSize = 14.sp,
+                    fontSize = 13.sp,
+                )
+                Text(
+                    text = if (isOn) formatDuration(state.elapsedSeconds) else "--:--:--",
+                    color = if (isOn) Ink else Ink2,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold,
                 )
             }
         }
     }
 }
 
-// Công tắc viên thuốc nằm ngang: 148 x 64 dp, núm trắng trượt trái phải
+// Công tắc viên thuốc nằm ngang: 148 x 64 dp, phong cách Comet Switch của 1.1.1.1
 @Composable
 private fun PillSwitch(
     on: Boolean,
@@ -277,14 +268,9 @@ private fun PillSwitch(
     onClick: () -> Unit,
 ) {
     val trackColor by animateColorAsState(
-        targetValue = if (on) TealSoft else TrackOff,
+        targetValue = if (on) FoxyOrange else TrackOff,
         animationSpec = tween(300),
         label = "track",
-    )
-    val knobColor by animateColorAsState(
-        targetValue = if (on) Teal else Color.White,
-        animationSpec = tween(300),
-        label = "knob",
     )
     val knobX by animateDpAsState(
         targetValue = if (on) 74.dp else 6.dp,
@@ -309,9 +295,9 @@ private fun PillSwitch(
             modifier = Modifier
                 .offset(x = knobX, y = 6.dp)
                 .size(width = 68.dp, height = 52.dp)
-                .shadow(2.dp, knobShape)
+                .shadow(3.dp, knobShape)
                 .clip(knobShape)
-                .background(knobColor),
+                .background(Color.White),
         )
     }
 }

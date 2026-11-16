@@ -42,10 +42,10 @@ import com.example.foxy.R
 import com.example.foxy.ui.home.GameOption
 
 private val BgColor = Color(0xFFFFFFFF)
-private val Ink = Color(0xFF1C1F1D)
-private val Ink2 = Color(0xFF6B6F6C)
+private val Ink = Color(0xFF1A1A1A)
+private val Ink2 = Color(0xFF757575)
 private val LineSoft = Color(0xFFEBEAE6)
-private val AccentRed = Color(0xFFE84E38)
+private val FoxyOrange = Color(0xFFF24C00)
 private val WarpBlue = Color(0xFF0052CC)
 
 private val BackArrowIcon: ImageVector by lazy {
@@ -75,7 +75,7 @@ private val CheckIcon: ImageVector by lazy {
         viewportWidth = 24f,
         viewportHeight = 24f,
     ).path(
-        stroke = SolidColor(AccentRed),
+        stroke = SolidColor(FoxyOrange),
         strokeLineWidth = 2.6f,
         strokeLineCap = StrokeCap.Round,
         strokeLineJoin = StrokeJoin.Round,
@@ -317,7 +317,7 @@ private fun GameOptionRow(
             Icon(
                 imageVector = CheckIcon,
                 contentDescription = "Đang chọn",
-                tint = AccentRed,
+                tint = FoxyOrange,
                 modifier = Modifier
                     .size(24.dp)
                     .padding(top = 2.dp),

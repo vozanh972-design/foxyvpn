@@ -37,10 +37,10 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.foxy.ui.home.HomeTab
 
 private val BgColor = Color(0xFFFFFFFF)
-private val Ink = Color(0xFF1C1F1D)
-private val Ink2 = Color(0xFF6B6F6C)
+private val Ink = Color(0xFF1A1A1A)
+private val Ink2 = Color(0xFF757575)
 private val LineSoft = Color(0xFFEBEAE6)
-private val DangerRed = Color(0xFFC0392B)
+private val DangerRed = Color(0xFFD93025)
 
 private val BackArrowIcon: ImageVector by lazy {
     ImageVector.Builder(
