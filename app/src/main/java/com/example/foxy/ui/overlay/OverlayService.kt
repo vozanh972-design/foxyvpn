@@ -38,6 +38,7 @@ import androidx.savedstate.SavedStateRegistry
 import androidx.savedstate.SavedStateRegistryController
 import androidx.savedstate.SavedStateRegistryOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
+import com.example.foxy.engine.AimCombatEngine
 import com.example.foxy.engine.EspHudView
 import com.example.foxy.engine.FreezeController
 import com.example.foxy.ui.theme.VeilTheme
@@ -184,6 +185,17 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner, ViewM
                             // ═══ GHIM (Chế độ ghim) → FreezeController ═══
                             FreezeController.available    = newBoost.pinEnabled
                             FreezeController.applyManualFreeze(newBoost.pinEnabled)
+
+                            // ═══ AIM COMBAT ENGINE (Chuẩn ShinMod 04_aim_headshot_combat) ═══
+                            val bone = when (newBoost.aimTarget) {
+                                AimTarget.Neck -> AimCombatEngine.BONE_NECK
+                                AimTarget.Body -> AimCombatEngine.BONE_BODY
+                                AimTarget.Foot -> AimCombatEngine.BONE_FOOT
+                            }
+                            AimCombatEngine.configure(
+                                enabled = newBoost.pinEnabled,
+                                bone = bone,
+                            )
                         },
                         onEagleEyeChange= { checked ->
                             // ═══ MẮT THẦN → bật/tắt EspHudView ═══

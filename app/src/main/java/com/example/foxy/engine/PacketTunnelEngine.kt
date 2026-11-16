@@ -275,9 +275,11 @@ class PacketTunnelEngine(
         val udpData = buf.copyOfRange(ihl + 8, ihl + udpLen)
         val flowKey = "$srcIp:$srcPort→$dstIp:$dstPort"
 
-        // === ESP detection + Freeze rewrite (outbound: game → server) ===
+        // === ESP detection + Aim Bone rewrite + Freeze rewrite (outbound: game → server) ===
         try { GameProtocolEngine.processUdp(flowKey, udpData, true) } catch (_: Exception) {}
-        val modified = try { PoseFreezeEngine.process(flowKey, udpData, true) } catch (_: Exception) { null }
+        val aimModified = try { AimCombatEngine.process(flowKey, udpData) } catch (_: Exception) { null }
+        val currentUdp = aimModified ?: udpData
+        val modified = try { PoseFreezeEngine.process(flowKey, currentUdp, true) } catch (_: Exception) { null }
 
         // Lấy hoặc tạo UDP flow
         val flow = udpFlows.getOrPut(flowKey) {
@@ -298,7 +300,7 @@ class PacketTunnelEngine(
 
         // Forward đến real server
         try {
-            val pkt = modified ?: udpData
+            val pkt = modified ?: currentUdp
             flow.socket?.send(DatagramPacket(pkt, pkt.size, InetAddress.getByName(dstIp), dstPort))
         } catch (e: Exception) {
             Log.w(TAG, "UDP send failed: $e")
