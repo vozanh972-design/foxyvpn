@@ -1,7 +1,12 @@
 package com.example.foxy.ui.home
 
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
@@ -47,15 +52,18 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.TileMode
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.path
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
@@ -136,11 +144,11 @@ fun HomeScreen(
             .background(BgWhite)
             .statusBarsPadding(),
     ) {
-        // Top Bar phong cách 1.1.1.1: Logo Foxy góc trái, Nút 3 gạch góc phải
+        // Top Bar phong cách 1.1.1.1: Logo Foxy + by ThanhMost góc trái, Nút 3 gạch góc phải
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(64.dp)
+                .height(68.dp)
                 .padding(horizontal = 20.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -152,16 +160,26 @@ fun HomeScreen(
                 Image(
                     painter = painterResource(R.drawable.ic_foxy_mark),
                     contentDescription = "Logo Foxy",
-                    modifier = Modifier.size(width = 20.dp, height = 28.dp),
+                    modifier = Modifier.size(width = 22.dp, height = 30.dp),
                     contentScale = ContentScale.Fit,
                 )
-                Text(
-                    text = "FOXY",
-                    color = Ink,
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Black,
-                    letterSpacing = 2.sp,
-                )
+                Column {
+                    Text(
+                        text = "FOXY",
+                        color = Ink,
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.Black,
+                        letterSpacing = 1.2.sp,
+                        lineHeight = 18.sp,
+                    )
+                    Text(
+                        text = "by ThanhMost",
+                        color = Ink,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        lineHeight = 14.sp,
+                    )
+                }
             }
 
             Box(
@@ -185,15 +203,20 @@ fun HomeScreen(
             }
         }
 
-        Spacer(Modifier.weight(0.45f))
+        Spacer(Modifier.weight(0.35f))
 
-        // Trung tâm: Công tắc Switch lớn + Trạng thái chữ to rõ của 1.1.1.1
+        // Trung tâm: Chữ Game động phong cách WARP / 1.1.1.1 + Công tắc Switch lớn + Trạng thái
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
+            // Chữ Free Fire hoặc Free Fire Max với animation gradient
+            AnimatedGameLogo(selectedGame = state.serverName)
+
+            Spacer(Modifier.height(44.dp))
+
             PillSwitch(
                 on = isOn,
                 enabled = !isBusy,
@@ -257,6 +280,75 @@ fun HomeScreen(
                 )
             }
         }
+    }
+/**
+ * Chữ logo Game động phong cách LogoView của 1.1.1.1:
+ * - Free Fire: Hiệu ứng gradient lửa cam rực rỡ (từ bg_warp_logo)
+ * - Free Fire Max: Hiệu ứng gradient cầu vồng đa sắc (từ bg_1111_logo)
+ */
+@Composable
+private fun AnimatedGameLogo(
+    selectedGame: String,
+    modifier: Modifier = Modifier,
+) {
+    val isMax = selectedGame.contains("Max", ignoreCase = true)
+    val text = if (isMax) "FREE FIRE MAX" else "FREE FIRE"
+
+    val infiniteTransition = rememberInfiniteTransition(label = "logoFlow")
+    val offsetFraction by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 6000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart,
+        ),
+        label = "gradientOffset",
+    )
+
+    // Palette màu chuẩn từ bg_warp_logo và bg_1111_logo
+    val warpColors = remember {
+        listOf(
+            Color(0xFFEC1557),
+            Color(0xFFF16137),
+            Color(0xFFF24C00),
+            Color(0xFFFFA000),
+            Color(0xFFFF5722),
+            Color(0xFFEC1557),
+        )
+    }
+
+    val rainbowColors = remember {
+        listOf(
+            Color(0xFF343893),
+            Color(0xFF8A318A),
+            Color(0xFFB21F6F),
+            Color(0xFFF16137),
+            Color(0xFF45BAD2),
+            Color(0xFF343893),
+        )
+    }
+
+    val activeColors = if (isMax) rainbowColors else warpColors
+
+    Box(
+        modifier = modifier,
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = text,
+            style = TextStyle(
+                fontSize = if (isMax) 28.sp else 34.sp,
+                fontWeight = FontWeight.Black,
+                letterSpacing = if (isMax) 2.5.sp else 3.5.sp,
+                brush = Brush.horizontalGradient(
+                    colors = activeColors + activeColors,
+                    startX = offsetFraction * 700f,
+                    endX = offsetFraction * 700f + 700f,
+                    tileMode = TileMode.Repeated,
+                ),
+            ),
+            textAlign = TextAlign.Center,
+        )
     }
 }
 
