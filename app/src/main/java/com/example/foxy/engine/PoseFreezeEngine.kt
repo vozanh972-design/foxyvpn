@@ -1,4 +1,4 @@
-﻿package com.example.foxy.engine
+package com.example.foxy.engine
 
 import java.util.concurrent.ConcurrentHashMap
 
@@ -17,26 +17,28 @@ object PoseFreezeEngine {
 
     private val flows = ConcurrentHashMap<String, FlowState>()
 
-    /** Returns modified packet hoáº·c null náº¿u khÃ´ng cáº§n modify. */
+    /** Returns modified packet hoặc null nếu không cần modify. */
     fun process(flowKey: String, data: ByteArray, outbound: Boolean): ByteArray? {
-        if (!outbound) return null  // Inbound: khÃ´ng modify
+        if (!outbound || data.size < 28) return null  // Inbound hoặc gói tin ngắn: pass through
+
+        // NẾU Ở SẢNH (chưa có localPlayer trong trận) -> 100% Passthrough, chống đơ sảnh
+        val lp = EspEntityStore.snapshot().localPlayer ?: return null
 
         val shouldFreeze = FreezeController.isFreezeActive()
         val flow = flows.getOrPut(flowKey) { FlowState() }
 
-        // Láº¥y vá»‹ trÃ­ local player Ä‘á»ƒ pin
-        val lp = EspEntityStore.snapshot().localPlayer
-        if (lp != null && !shouldFreeze) {
-            // Cáº­p nháº­t pinned position khi khÃ´ng freeze
+        if (!shouldFreeze) {
+            // Cập nhật pinned position khi không freeze
             flow.pinnedX = (lp.x * 1000).toLong()
             flow.pinnedY = (lp.y * 1000).toLong()
             flow.pinnedZ = (lp.z * 1000).toLong()
             flow.hasPinned = true
+            return null
         }
 
-        if (!shouldFreeze || !flow.hasPinned) return null  // Pass through
+        if (!flow.hasPinned) return null  // Pass through
 
-        // === FREEZE: thá»­ rewrite position varints trong packet ===
+        // === FREEZE: thử rewrite position varints trong packet ===
         return rewritePosition(data, flow.pinnedX, flow.pinnedY, flow.pinnedZ)
     }
 

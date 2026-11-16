@@ -182,11 +182,7 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner, ViewM
                         boost           = boost,
                         onBoostChange   = { newBoost ->
                             boost = newBoost
-                            // ═══ GHIM (Chế độ ghim) → FreezeController ═══
-                            FreezeController.available    = newBoost.pinEnabled
-                            FreezeController.applyManualFreeze(newBoost.pinEnabled)
-
-                            // ═══ AIM COMBAT ENGINE (Chuẩn ShinMod 04_aim_headshot_combat) ═══
+                            // ═══ CHẾ ĐỘ GHIM (Chuẩn ShinMod 04_aim_headshot_combat / setHsBone) ═══
                             val bone = when (newBoost.aimTarget) {
                                 AimTarget.Neck -> AimCombatEngine.BONE_NECK
                                 AimTarget.Body -> AimCombatEngine.BONE_BODY

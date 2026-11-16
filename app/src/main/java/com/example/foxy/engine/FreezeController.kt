@@ -47,6 +47,10 @@ object FreezeController {
         }
     }
 
+    fun isFiring(): Boolean {
+        return firing || (System.currentTimeMillis() < firePulseUntil)
+    }
+
     fun isFreezeActive(): Boolean {
         if (!available) return false
         if (manualFreeze) return true

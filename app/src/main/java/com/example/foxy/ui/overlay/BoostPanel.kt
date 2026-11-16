@@ -57,7 +57,7 @@ enum class AimTarget(val label: String, val yFraction: Float) {
 }
 
 data class BoostState(
-    val pinEnabled: Boolean = true,
+    val pinEnabled: Boolean = false,
     val aimTarget: AimTarget = AimTarget.Neck,
 )
 

@@ -275,11 +275,22 @@ class PacketTunnelEngine(
         val udpData = buf.copyOfRange(ihl + 8, ihl + udpLen)
         val flowKey = "$srcIp:$srcPort→$dstIp:$dstPort"
 
-        // === ESP detection + Aim Bone rewrite + Freeze rewrite (outbound: game → server) ===
-        try { GameProtocolEngine.processUdp(flowKey, udpData, true) } catch (_: Exception) {}
-        val aimModified = try { AimCombatEngine.process(flowKey, udpData) } catch (_: Exception) { null }
+        // === BẢO VỆ DNS VÀ LƯU LƯỢNG HỆ THỐNG: PORT 53 PASSTHROUGH 100% ===
+        val isDns = srcPort == 53 || dstPort == 53
+
+        if (!isDns) {
+            try { GameProtocolEngine.processUdp(flowKey, udpData, true) } catch (_: Exception) {}
+        }
+
+        val aimModified = if (!isDns) {
+            try { AimCombatEngine.process(flowKey, udpData, dstPort) } catch (_: Exception) { null }
+        } else null
+
         val currentUdp = aimModified ?: udpData
-        val modified = try { PoseFreezeEngine.process(flowKey, currentUdp, true) } catch (_: Exception) { null }
+
+        val modified = if (!isDns) {
+            try { PoseFreezeEngine.process(flowKey, currentUdp, true) } catch (_: Exception) { null }
+        } else null
 
         // Lấy hoặc tạo UDP flow
         val flow = udpFlows.getOrPut(flowKey) {

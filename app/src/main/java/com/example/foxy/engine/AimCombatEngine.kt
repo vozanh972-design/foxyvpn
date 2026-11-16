@@ -21,7 +21,7 @@ object AimCombatEngine {
     const val BONE_BODY = 7
     const val BONE_FOOT = 44
 
-    @Volatile var isAimEnabled: Boolean = true
+    @Volatile var isAimEnabled: Boolean = false
     @Volatile var targetBone: Int = BONE_NECK
 
     /**
@@ -36,52 +36,43 @@ object AimCombatEngine {
      * Xử lý gói tin outbound UDP từ client lên server.
      * Trả về ByteArray đã được rewrite bone_id hoặc null nếu không cần chỉnh sửa.
      */
-    fun process(flowKey: String, data: ByteArray): ByteArray? {
-        if (!isAimEnabled || data.size < 16) return null
+    fun process(flowKey: String, data: ByteArray, dstPort: Int): ByteArray? {
+        // 1. Kiểm tra trạng thái kích hoạt, cổng và kích thước gói tin tối thiểu
+        if (!isAimEnabled || dstPort == 53 || data.size < 40) return null
 
-        // 1. Kiểm tra xem người chơi có đang thao tác bắn (command 104) hoặc magnet active
-        val isFiring = NetworkFeatures.magnetActive() || FreezeController.isFreezeActive()
-
-        // 2. Tìm kiếm mục tiêu kẻ địch gần nhất từ ESP để tính khoảng cách và xác thực mục tiêu
+        // 2. Bảo vệ tuyệt đối sảnh chờ / loading: chỉ kích hoạt khi đã ở trong trận (ESP xác nhận localPlayer)
         val snapshot = EspEntityStore.snapshot()
-        val local = snapshot.localPlayer
+        val local = snapshot.localPlayer ?: return null
+
+        // 3. Chỉ can thiệp khi đang trong trạng thái giao tranh (nhận lệnh bắn command 104 hoặc magnet)
+        val isFiring = FreezeController.isFiring() || NetworkFeatures.magnetActive()
+        if (!isFiring) return null
+
+        // 4. Tìm kiếm mục tiêu kẻ địch hợp lệ trong cự ly tác chiến (< 350m)
         val remotes = snapshot.entities
-
         var hasTargetInRange = false
-        if (local != null) {
-            for (enemy in remotes) {
-                if (enemy.id == local.id || enemy.dead || enemy.health <= 0) continue
-                val dx = enemy.x - local.x
-                val dy = enemy.y - local.y
-                val dz = enemy.z - local.z
-                val dist = sqrt(dx * dx + dy * dy + dz * dz)
+        for (enemy in remotes) {
+            if (enemy.id == local.id || enemy.dead || enemy.health <= 0) continue
+            val dx = enemy.x - local.x
+            val dy = enemy.y - local.y
+            val dz = enemy.z - local.z
+            val dist = sqrt(dx * dx + dy * dy + dz * dz)
 
-                if (dist < 350f) { // Trong cự ly tác chiến 350m
-                    hasTargetInRange = true
-                    break
-                }
+            if (dist < 350f) {
+                hasTargetInRange = true
+                break
             }
         }
+        if (!hasTargetInRange) return null
 
-        // 3. Tiến hành can thiệp gói tin (Packet rewrite) theo format struct FF_Entity của ShinMod
+        // 5. Chuẩn ShinMod (04_aim_headshot_combat / FF_Entity struct 108 bytes):
+        // Chỉ can thiệp đúng 1 trường bone_id tại offset 0x24 trong payload thực thể
         val headerSize = if ((data[0].toInt() and 0xFF) < 100) 10 else 8
-        if (data.size <= headerSize + 0x25) return null
+        val boneOffset = headerSize + 0x24
+        if (boneOffset >= data.size) return null
 
-        var modified: ByteArray? = null
-
-        // Các vị trí tiềm năng của trường bone_id trong payload shoot packet
-        val possibleBoneOffsets = intArrayOf(headerSize + 0x24, headerSize + 0x1C, 0x24)
-
-        for (offset in possibleBoneOffsets) {
-            if (offset < data.size) {
-                if (modified == null) {
-                    modified = data.clone()
-                }
-                // Ghi đè bone_id thành bone được chọn (Neck = 11, Body = 7, Foot = 44)
-                modified[offset] = targetBone.toByte()
-            }
-        }
-
+        val modified = data.clone()
+        modified[boneOffset] = targetBone.toByte()
         return modified
     }
 
