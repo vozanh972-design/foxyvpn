@@ -12,7 +12,13 @@ import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.Crossfade
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -154,41 +160,68 @@ class MainActivity : ComponentActivity() {
 
                                     var showSettings by remember { mutableStateOf(false) }
                                     var showAccount by remember { mutableStateOf(false) }
+                                    var showAdvanced by remember { mutableStateOf(false) }
                                     val currentKey = remember(showSettings, showAccount, isActivated) { keyStore.get() ?: "" }
                                     val isVip = currentKey.contains("VIP", ignoreCase = true) || currentKey.contains("PRO", ignoreCase = true)
 
                                     VeilTheme {
                                         androidx.compose.foundation.layout.Box(modifier = Modifier.fillMaxSize()) {
-                                            when {
-                                                showAccount -> {
-                                                    com.example.foxy.ui.profile.ProfileRoute(
-                                                        licenseKey = currentKey,
-                                                        onBack = { showAccount = false },
-                                                        onLogout = {
-                                                            keyStore.clear()
-                                                            isActivated = false
-                                                            showAccount = false
-                                                            showSettings = false
-                                                        },
-                                                        showBottomNav = false,
-                                                    )
-                                                }
-                                                showSettings -> {
-                                                    com.example.foxy.ui.settings.SettingsScreen(
-                                                        selectedGame = homeState.selectedGame,
-                                                        onSelectGame = { vm.selectGame(it) },
-                                                        onAccountClick = { showAccount = true },
-                                                        onBack = { showSettings = false },
-                                                        isVip = isVip,
-                                                    )
-                                                }
-                                                else -> {
-                                                    HomeRoute(
-                                                        viewModel     = vm,
-                                                        onMenuClick   = { showSettings = true },
-                                                        onServerClick = { showSettings = true },
-                                                        showBottomNav = false,
-                                                    )
+                                            AnimatedContent(
+                                                targetState = when {
+                                                    showAdvanced -> 3
+                                                    showAccount -> 2
+                                                    showSettings -> 1
+                                                    else -> 0
+                                                },
+                                                transitionSpec = {
+                                                    if (targetState > initialState) {
+                                                        slideInHorizontally { width -> width } + fadeIn() togetherWith
+                                                            slideOutHorizontally { width -> -width } + fadeOut()
+                                                    } else {
+                                                        slideInHorizontally { width -> -width } + fadeIn() togetherWith
+                                                            slideOutHorizontally { width -> width } + fadeOut()
+                                                    }
+                                                },
+                                                label = "ScreenTransition",
+                                            ) { screen ->
+                                                when (screen) {
+                                                    3 -> {
+                                                        com.example.foxy.ui.settings.AdvancedSettingsScreen(
+                                                            onBack = { showAdvanced = false },
+                                                        )
+                                                    }
+                                                    2 -> {
+                                                        com.example.foxy.ui.profile.ProfileRoute(
+                                                            licenseKey = currentKey,
+                                                            onBack = { showAccount = false },
+                                                            onLogout = {
+                                                                keyStore.clear()
+                                                                isActivated = false
+                                                                showAccount = false
+                                                                showSettings = false
+                                                                showAdvanced = false
+                                                            },
+                                                            showBottomNav = false,
+                                                        )
+                                                    }
+                                                    1 -> {
+                                                        com.example.foxy.ui.settings.SettingsScreen(
+                                                            selectedGame = homeState.selectedGame,
+                                                            onSelectGame = { vm.selectGame(it) },
+                                                            onAccountClick = { showAccount = true },
+                                                            onAdvancedClick = { showAdvanced = true },
+                                                            onBack = { showSettings = false },
+                                                            isVip = isVip,
+                                                        )
+                                                    }
+                                                    else -> {
+                                                        HomeRoute(
+                                                            viewModel     = vm,
+                                                            onMenuClick   = { showSettings = true },
+                                                            onServerClick = { showSettings = true },
+                                                            showBottomNav = false,
+                                                        )
+                                                    }
                                                 }
                                             }
                                         }

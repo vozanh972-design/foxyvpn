@@ -91,6 +91,7 @@ fun SettingsScreen(
     selectedGame: GameOption,
     onSelectGame: (GameOption) -> Unit,
     onAccountClick: () -> Unit,
+    onAdvancedClick: () -> Unit = {},
     onBack: () -> Unit,
     isVip: Boolean = false,
     modifier: Modifier = Modifier,
@@ -177,21 +178,23 @@ fun SettingsScreen(
                     .background(LineSoft),
             )
 
-            // Promo Banner (phong cách WARP+)
+            // Promo Banner (phong cách WARP+ căn giữa chuẩn Ảnh 2)
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 18.dp)
-                    .clip(RoundedCornerShape(6.dp))
+                    .clip(RoundedCornerShape(8.dp))
                     .background(WarpBlue)
                     .padding(horizontal = 18.dp, vertical = 16.dp),
+                contentAlignment = Alignment.Center,
             ) {
-                Column {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(
                         text = if (isVip) "Foxy VIP Activated" else "Foxy Free Activated",
                         color = Color.White,
                         fontSize = 17.sp,
                         fontWeight = FontWeight.Bold,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                     )
                     Text(
                         text = if (isVip) {
@@ -200,8 +203,9 @@ fun SettingsScreen(
                             "Đã kích hoạt gói đường truyền miễn phí."
                         },
                         color = Color.White.copy(alpha = 0.9f),
-                        fontSize = 13.sp,
-                        modifier = Modifier.padding(top = 4.dp),
+                        fontSize = 12.5.sp,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                        modifier = Modifier.padding(top = 6.dp),
                     )
                 }
             }
@@ -223,7 +227,45 @@ fun SettingsScreen(
                         color = Ink,
                     )
                     Text(
-                        text = "Xem thông tin gói cước, cài đặt và đăng xuất",
+                        text = "Xem thông tin tài khoản",
+                        fontSize = 13.sp,
+                        color = Ink2,
+                        modifier = Modifier.padding(top = 2.dp),
+                    )
+                }
+                Icon(
+                    imageVector = Icons.Rounded.ChevronRight,
+                    contentDescription = null,
+                    tint = Ink2,
+                    modifier = Modifier.size(20.dp),
+                )
+            }
+
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(1.dp)
+                    .background(LineSoft),
+            )
+
+            // Mục Cài đặt / Nâng cao (Advanced - Ảnh 2 & 3)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(onClick = onAdvancedClick)
+                    .padding(horizontal = 18.dp, vertical = 18.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Column {
+                    Text(
+                        text = "Cài đặt",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Ink,
+                    )
+                    Text(
+                        text = "Ngôn ngữ, giao diện, tùy chọn kết nối",
                         fontSize = 13.sp,
                         color = Ink2,
                         modifier = Modifier.padding(top = 2.dp),
