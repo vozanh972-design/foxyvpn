@@ -281,6 +281,8 @@ fun HomeScreen(
             }
         }
     }
+}
+
 /**
  * Chữ logo Game động phong cách LogoView của 1.1.1.1:
  * - Free Fire: Hiệu ứng gradient lửa cam rực rỡ (từ bg_warp_logo)
