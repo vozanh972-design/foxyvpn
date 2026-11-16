@@ -22,7 +22,7 @@ object AimCombatEngine {
     const val BONE_FOOT = 44
 
     @Volatile var isAimEnabled: Boolean = false
-    @Volatile var targetBone: Int = BONE_NECK
+    @Volatile var targetBone: Int = BONE_HEAD
 
     /**
      * Cấu hình từ giao diện Chế độ ghim (BoostPanel).
@@ -78,6 +78,6 @@ object AimCombatEngine {
 
     fun reset() {
         isAimEnabled = false
-        targetBone = BONE_NECK
+        targetBone = BONE_HEAD
     }
 }
