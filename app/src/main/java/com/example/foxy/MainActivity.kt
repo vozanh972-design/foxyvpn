@@ -193,6 +193,7 @@ class MainActivity : ComponentActivity() {
                                                         com.example.foxy.ui.settings.FeedbackScreen(
                                                             onBack = { showFeedback = false },
                                                             isDarkTheme = isDarkTheme,
+                                                            currentLanguage = currentLang,
                                                         )
                                                     }
                                                     3 -> {

@@ -1,6 +1,9 @@
 package com.example.foxy.ui.settings
 
+import android.content.Intent
+import android.net.Uri
 import android.widget.Toast
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -20,10 +23,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
@@ -41,10 +41,13 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.path
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.foxy.R
 
 private val BackArrowIcon: ImageVector by lazy {
     ImageVector.Builder(
@@ -65,54 +68,40 @@ private val BackArrowIcon: ImageVector by lazy {
     }.build()
 }
 
-// Icon Feedback minh họa chuẩn hộp thoại hỗ trợ
-private val FeedbackIllustrationIcon: ImageVector by lazy {
-    ImageVector.Builder(
-        name = "FeedbackIllustration",
-        defaultWidth = 80.dp,
-        defaultHeight = 80.dp,
-        viewportWidth = 80f,
-        viewportHeight = 80f,
-    ).path(
-        stroke = SolidColor(Color(0xFF0052CC)),
-        strokeLineWidth = 3.5f,
-        strokeLineCap = StrokeCap.Round,
-        strokeLineJoin = StrokeJoin.Round,
-    ) {
-        // Hộp thoại chat tròn to
-        moveTo(20f, 24f)
-        lineTo(60f, 24f)
-        lineTo(60f, 52f)
-        lineTo(36f, 52f)
-        lineTo(24f, 62f)
-        lineTo(24f, 52f)
-        lineTo(20f, 52f)
-        close()
-        // Dấu chấm hỏi / thông tin ở giữa
-        moveTo(40f, 32f)
-        lineTo(40f, 40f)
-        moveTo(40f, 45f)
-        lineTo(40f, 46.5f)
-    }.build()
-}
-
 /**
- * Màn hình Gửi phản hồi (Submit Feedback) chuẩn Ảnh 3 và activity_submit_feedback_interstitial.xml của 1.1.1.1
+ * Màn hình Gửi phản hồi (Submit Feedback) chuẩn 100% theo Ảnh 3 và layout 1.1.1.1 gốc
  */
 @Composable
 fun FeedbackScreen(
     onBack: () -> Unit,
     isDarkTheme: Boolean = false,
+    currentLanguage: String = "vi",
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
     var shareDebugInfo by remember { mutableStateOf(true) }
 
+    val isVi = currentLanguage == "vi"
     val bgColor = if (isDarkTheme) Color(0xFF141414) else Color(0xFFFFFFFF)
     val inkColor = if (isDarkTheme) Color(0xFFEEEEEE) else Color(0xFF1A1A1A)
     val ink2Color = if (isDarkTheme) Color(0xFFA0A0A0) else Color(0xFF555555)
-    val footerBg = if (isDarkTheme) Color(0xFF1E1E1E) else Color(0xFFF9F9F9)
-    val brandBlue = Color(0xFF0052CC)
+    val footerBg = if (isDarkTheme) Color(0xFF1E1E1E) else Color(0xFFFFFFFF)
+    val brandBlue = Color(0xFF0053D0)
+
+    // Nội dung text theo ngôn ngữ
+    val titleText = if (isVi) "Gửi phản hồi" else "Submit Feedback"
+    val descText = if (isVi) {
+        "Trung tâm trợ giúp của chúng tôi luôn được cập nhật với các câu trả lời cho các câu hỏi thường gặp. Xem trung tâm trợ giúp."
+    } else {
+        "Our help is updated with answers to common questions. Visit Help center."
+    }
+    val includeLabelText = if (isVi) "Trong phản hồi của bạn vui lòng bao gồm:" else "In your feedback please include:"
+    val step1Text = if (isVi) "1. Các bước cần thiết để tái hiện sự cố." else "1. Steps required to reproduce the issue."
+    val step2Text = if (isVi) "2. Những gì bạn mong đợi sẽ xảy ra." else "2. What you expected to happen."
+    val step3Text = if (isVi) "3. Bất kỳ thông tin nào khác có thể giúp ích cho đội ngũ phát triển." else "3. Any other information that may help the development team."
+    val shareDebugText = if (isVi) "Chia sẻ thông tin gỡ lỗi" else "Share debug information"
+    val viewLogsText = if (isVi) "Xem nhật ký" else "View Logs"
+    val feedbackText = if (isVi) "Phản hồi" else "Feedback"
 
     Column(
         modifier = modifier
@@ -151,46 +140,38 @@ fun FeedbackScreen(
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 28.dp),
         ) {
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(10.dp))
 
-            // Hình ảnh minh họa ở giữa
+            // Ảnh minh họa gốc ic_notification_permission_and_submit_feedback từ 1.1.1.1
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(vertical = 12.dp),
                 contentAlignment = Alignment.Center,
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(100.dp)
-                        .clip(CircleShape)
-                        .background(brandBlue.copy(alpha = 0.1f)),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        imageVector = FeedbackIllustrationIcon,
-                        contentDescription = null,
-                        tint = brandBlue,
-                        modifier = Modifier.size(54.dp),
-                    )
-                }
+                Image(
+                    painter = painterResource(id = R.drawable.ic_notification_permission_and_submit_feedback),
+                    contentDescription = "Submit Feedback Illustration",
+                    modifier = Modifier.size(width = 130.dp, height = 96.dp),
+                    contentScale = ContentScale.Fit,
+                )
             }
 
-            Spacer(Modifier.height(16.dp))
+            Spacer(Modifier.height(18.dp))
 
-            // Tiêu đề: Submit Feedback
+            // Tiêu đề
             Text(
-                text = "Submit Feedback",
-                fontSize = 24.sp,
+                text = titleText,
+                fontSize = 25.sp,
                 fontWeight = FontWeight.Bold,
                 color = inkColor,
             )
 
             Spacer(Modifier.height(14.dp))
 
-            // Mô tả Visit Help center
+            // Mô tả
             Text(
-                text = "Our help is updated with answers to common questions. Visit Help center.",
+                text = descText,
                 fontSize = 15.sp,
                 color = ink2Color,
                 lineHeight = 22.sp,
@@ -198,33 +179,33 @@ fun FeedbackScreen(
 
             Spacer(Modifier.height(20.dp))
 
-            // In your feedback please include:
+            // Dòng hướng dẫn
             Text(
-                text = "In your feedback please include:",
+                text = includeLabelText,
                 fontSize = 15.5.sp,
-                fontWeight = FontWeight.SemiBold,
+                fontWeight = FontWeight.Bold,
                 color = inkColor,
             )
 
             Spacer(Modifier.height(12.dp))
 
-            // 3 gạch đầu dòng chuẩn XML
+            // 3 gạch đầu dòng
             Text(
-                text = "1. Steps required to reproduce the issue.",
+                text = step1Text,
                 fontSize = 14.5.sp,
                 color = ink2Color,
                 lineHeight = 21.sp,
             )
             Spacer(Modifier.height(8.dp))
             Text(
-                text = "2. What you expected to happen.",
+                text = step2Text,
                 fontSize = 14.5.sp,
                 color = ink2Color,
                 lineHeight = 21.sp,
             )
             Spacer(Modifier.height(8.dp))
             Text(
-                text = "3. Any other information that may help the development team.",
+                text = step3Text,
                 fontSize = 14.5.sp,
                 color = ink2Color,
                 lineHeight = 21.sp,
@@ -233,20 +214,22 @@ fun FeedbackScreen(
             Spacer(Modifier.height(30.dp))
         }
 
-        // Chân trang ButtonsContainer (như trong layout XML của 1.1.1.1)
+        // Chân trang ButtonsContainer (như trong layout XML của 1.1.1.1 & Ảnh 3)
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .background(footerBg)
                 .navigationBarsPadding()
                 .padding(horizontal = 24.dp, vertical = 16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            // Share debug information switch
+            // 1. Cụm Switch Share debug information CĂN GIỮA MÀN HÌNH
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clickable { shareDebugInfo = !shareDebugInfo }
                     .padding(vertical = 6.dp),
+                horizontalArrangement = Arrangement.Center,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Switch(
@@ -254,56 +237,71 @@ fun FeedbackScreen(
                     onCheckedChange = { shareDebugInfo = it },
                     colors = SwitchDefaults.colors(
                         checkedThumbColor = Color.White,
-                        checkedTrackColor = brandBlue,
+                        checkedTrackColor = Color(0xFFF24C00), // Màu cam chuẩn 1.1.1.1
                         uncheckedThumbColor = Color.White,
-                        uncheckedTrackColor = Color(0xFFCCCCCC),
+                        uncheckedTrackColor = if (isDarkTheme) Color(0xFF444444) else Color(0xFFCCCCCC),
                     ),
                 )
                 Spacer(Modifier.width(12.dp))
                 Text(
-                    text = "Share debug information",
-                    fontSize = 14.5.sp,
+                    text = shareDebugText,
+                    fontSize = 15.sp,
                     fontWeight = FontWeight.Bold,
                     color = inkColor,
                 )
             }
 
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(14.dp))
 
-            // Cụm 2 nút bấm: View Logs & Feedback
+            // 2. Cụm 2 nút bấm: View Logs (không viền) và Feedback (khối xanh #0053D0 góc phẳng) CĂN GIỮA
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End,
+                horizontalArrangement = Arrangement.Center,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                OutlinedButton(
-                    onClick = {
-                        Toast.makeText(context, "Log hệ thống: Foxy Core VPN v1.0.0 OK", Toast.LENGTH_SHORT).show()
-                    },
-                    shape = RoundedCornerShape(4.dp),
-                    modifier = Modifier.padding(end = 12.dp),
+                // Nút View Logs: text button phẳng hoàn toàn không viền, căn thẳng hàng
+                Box(
+                    modifier = Modifier
+                        .height(46.dp)
+                        .clickable {
+                            val logMsg = if (isVi) "Nhật ký hệ thống: Foxy Core VPN v1.0.0 [OK]" else "System Log: Foxy Core VPN v1.0.0 [OK]"
+                            Toast.makeText(context, logMsg, Toast.LENGTH_SHORT).show()
+                        }
+                        .padding(horizontal = 22.dp),
+                    contentAlignment = Alignment.Center,
                 ) {
                     Text(
-                        text = "View Logs",
+                        text = viewLogsText,
                         color = inkColor,
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 15.sp,
                     )
                 }
 
-                Button(
-                    onClick = {
-                        Toast.makeText(context, "Cảm ơn bạn! Phản hồi đã được gửi thành công.", Toast.LENGTH_SHORT).show()
-                        onBack()
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = brandBlue),
-                    shape = RoundedCornerShape(4.dp),
+                Spacer(Modifier.width(16.dp))
+
+                // Nút Feedback: khối xanh #0053D0 góc phẳng chuẩn 0dp, chứa url ẩn https://t.me/lunexchitgame
+                Box(
+                    modifier = Modifier
+                        .height(46.dp)
+                        .clip(RoundedCornerShape(0.dp))
+                        .background(brandBlue)
+                        .clickable {
+                            try {
+                                val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://t.me/lunexchitgame"))
+                                context.startActivity(intent)
+                            } catch (_: Exception) {
+                                Toast.makeText(context, "Không thể mở liên kết: https://t.me/lunexchitgame", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                        .padding(horizontal = 34.dp),
+                    contentAlignment = Alignment.Center,
                 ) {
                     Text(
-                        text = "Feedback",
+                        text = feedbackText,
                         color = Color.White,
                         fontWeight = FontWeight.Bold,
-                        fontSize = 14.sp,
+                        fontSize = 15.sp,
                     )
                 }
             }
