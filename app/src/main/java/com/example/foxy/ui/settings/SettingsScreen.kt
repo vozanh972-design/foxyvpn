@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -41,10 +40,6 @@ import androidx.compose.ui.unit.sp
 import com.example.foxy.R
 import com.example.foxy.ui.home.GameOption
 
-private val BgColor = Color(0xFFFFFFFF)
-private val Ink = Color(0xFF1A1A1A)
-private val Ink2 = Color(0xFF757575)
-private val LineSoft = Color(0xFFEBEAE6)
 private val FoxyOrange = Color(0xFFF24C00)
 private val WarpBlue = Color(0xFF0052CC)
 
@@ -56,7 +51,7 @@ private val BackArrowIcon: ImageVector by lazy {
         viewportWidth = 24f,
         viewportHeight = 24f,
     ).path(
-        stroke = SolidColor(Ink),
+        stroke = SolidColor(Color(0xFF1A1A1A)),
         strokeLineWidth = 2.2f,
         strokeLineCap = StrokeCap.Round,
         strokeLineJoin = StrokeJoin.Round,
@@ -94,12 +89,18 @@ fun SettingsScreen(
     onAdvancedClick: () -> Unit = {},
     onBack: () -> Unit,
     isVip: Boolean = false,
+    isDarkTheme: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
+    val bgColor = if (isDarkTheme) Color(0xFF141414) else Color(0xFFFFFFFF)
+    val inkColor = if (isDarkTheme) Color(0xFFEEEEEE) else Color(0xFF1A1A1A)
+    val ink2Color = if (isDarkTheme) Color(0xFF9E9E9E) else Color(0xFF757575)
+    val lineSoft = if (isDarkTheme) Color(0xFF262626) else Color(0xFFEBEAE6)
+
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(BgColor)
+            .background(bgColor)
             .statusBarsPadding(),
     ) {
         // Top App Bar
@@ -120,15 +121,15 @@ fun SettingsScreen(
                 Icon(
                     imageVector = BackArrowIcon,
                     contentDescription = "Quay lại",
-                    tint = Ink,
+                    tint = inkColor,
                     modifier = Modifier.size(22.dp),
                 )
             }
             Text(
                 text = "Cài đặt",
-                fontSize = 20.sp,
+                fontSize = 19.sp,
                 fontWeight = FontWeight.Bold,
-                color = Ink,
+                color = inkColor,
                 modifier = Modifier.padding(start = 12.dp),
             )
         }
@@ -137,7 +138,7 @@ fun SettingsScreen(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(1.dp)
-                .background(LineSoft),
+                .background(lineSoft),
         )
 
         // Content
@@ -153,13 +154,15 @@ fun SettingsScreen(
                 description = "Tối ưu đường truyền và hỗ trợ kết nối riêng cho Garena Free Fire.",
                 isSelected = selectedGame == GameOption.FreeFire,
                 onClick = { onSelectGame(GameOption.FreeFire) },
+                inkColor = inkColor,
+                ink2Color = ink2Color,
             )
 
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(1.dp)
-                    .background(LineSoft),
+                    .background(lineSoft),
             )
 
             // Option 2: Free Fire Max
@@ -169,30 +172,32 @@ fun SettingsScreen(
                 description = "Tối ưu đường truyền đồ họa cao và giảm giật lag cho Free Fire Max.",
                 isSelected = selectedGame == GameOption.FreeFireMax,
                 onClick = { onSelectGame(GameOption.FreeFireMax) },
+                inkColor = inkColor,
+                ink2Color = ink2Color,
             )
 
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(1.dp)
-                    .background(LineSoft),
+                    .background(lineSoft),
             )
 
-            // Promo Banner (phong cách WARP+ căn giữa chuẩn Ảnh 2)
+            // Promo Banner (phong cách WARP+ phẳng không bo góc chuẩn XML gốc 1.1.1.1)
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 18.dp)
-                    .clip(RoundedCornerShape(8.dp))
+                    .padding(horizontal = 16.dp, vertical = 16.dp)
+                    .clip(RoundedCornerShape(0.dp))
                     .background(WarpBlue)
-                    .padding(horizontal = 18.dp, vertical = 16.dp),
+                    .padding(horizontal = 16.dp, vertical = 14.dp),
                 contentAlignment = Alignment.Center,
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(
                         text = if (isVip) "Foxy VIP Activated" else "Foxy Free Activated",
                         color = Color.White,
-                        fontSize = 17.sp,
+                        fontSize = 16.sp,
                         fontWeight = FontWeight.Bold,
                         textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                     )
@@ -203,9 +208,9 @@ fun SettingsScreen(
                             "Đã kích hoạt gói đường truyền miễn phí."
                         },
                         color = Color.White.copy(alpha = 0.9f),
-                        fontSize = 12.5.sp,
+                        fontSize = 12.sp,
                         textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                        modifier = Modifier.padding(top = 6.dp),
+                        modifier = Modifier.padding(top = 4.dp),
                     )
                 }
             }
@@ -215,28 +220,28 @@ fun SettingsScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clickable(onClick = onAccountClick)
-                    .padding(horizontal = 18.dp, vertical = 18.dp),
+                    .padding(horizontal = 18.dp, vertical = 16.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
                 Column {
                     Text(
                         text = "Tài khoản",
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = Ink,
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = inkColor,
                     )
                     Text(
                         text = "Xem thông tin tài khoản",
-                        fontSize = 13.sp,
-                        color = Ink2,
+                        fontSize = 12.sp,
+                        color = ink2Color,
                         modifier = Modifier.padding(top = 2.dp),
                     )
                 }
                 Icon(
                     imageVector = Icons.Rounded.ChevronRight,
                     contentDescription = null,
-                    tint = Ink2,
+                    tint = ink2Color,
                     modifier = Modifier.size(20.dp),
                 )
             }
@@ -245,36 +250,36 @@ fun SettingsScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(1.dp)
-                    .background(LineSoft),
+                    .background(lineSoft),
             )
 
-            // Mục Cài đặt / Nâng cao (Advanced - Ảnh 2 & 3)
+            // Mục Cài đặt / Nâng cao (Advanced)
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clickable(onClick = onAdvancedClick)
-                    .padding(horizontal = 18.dp, vertical = 18.dp),
+                    .padding(horizontal = 18.dp, vertical = 16.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
                 Column {
                     Text(
                         text = "Cài đặt",
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = Ink,
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = inkColor,
                     )
                     Text(
                         text = "Ngôn ngữ, giao diện, tùy chọn kết nối",
-                        fontSize = 13.sp,
-                        color = Ink2,
+                        fontSize = 12.sp,
+                        color = ink2Color,
                         modifier = Modifier.padding(top = 2.dp),
                     )
                 }
                 Icon(
                     imageVector = Icons.Rounded.ChevronRight,
                     contentDescription = null,
-                    tint = Ink2,
+                    tint = ink2Color,
                     modifier = Modifier.size(20.dp),
                 )
             }
@@ -283,26 +288,26 @@ fun SettingsScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(1.dp)
-                    .background(LineSoft),
+                    .background(lineSoft),
             )
 
             // Phiên bản ứng dụng
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 18.dp, vertical = 18.dp),
+                    .padding(horizontal = 18.dp, vertical = 16.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
                 Text(
                     text = "Phiên bản",
-                    fontSize = 14.sp,
-                    color = Ink2,
+                    fontSize = 13.5.sp,
+                    color = ink2Color,
                 )
                 Text(
                     text = "1.0.0 (5722)",
-                    fontSize = 14.sp,
-                    color = Ink2,
+                    fontSize = 13.5.sp,
+                    color = ink2Color,
                 )
             }
 
@@ -318,12 +323,14 @@ private fun GameOptionRow(
     description: String,
     isSelected: Boolean,
     onClick: () -> Unit,
+    inkColor: Color,
+    ink2Color: Color,
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
-            .padding(horizontal = 18.dp, vertical = 18.dp),
+            .padding(horizontal = 18.dp, vertical = 16.dp),
         verticalAlignment = Alignment.Top,
     ) {
         Image(
@@ -343,15 +350,15 @@ private fun GameOptionRow(
             Text(
                 text = title,
                 fontSize = 17.sp,
-                fontWeight = FontWeight.Bold,
-                color = Ink,
+                fontWeight = FontWeight.Medium,
+                color = inkColor,
             )
             Text(
                 text = description,
-                fontSize = 13.sp,
-                color = Ink2,
-                lineHeight = 18.sp,
-                modifier = Modifier.padding(top = 4.dp),
+                fontSize = 12.sp,
+                color = ink2Color,
+                lineHeight = 17.sp,
+                modifier = Modifier.padding(top = 3.dp),
             )
         }
 
@@ -361,7 +368,7 @@ private fun GameOptionRow(
                 contentDescription = "Đang chọn",
                 tint = FoxyOrange,
                 modifier = Modifier
-                    .size(24.dp)
+                    .size(22.dp)
                     .padding(top = 2.dp),
             )
         }

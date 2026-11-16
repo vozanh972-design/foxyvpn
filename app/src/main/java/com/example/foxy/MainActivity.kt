@@ -161,6 +161,9 @@ class MainActivity : ComponentActivity() {
                                     var showSettings by remember { mutableStateOf(false) }
                                     var showAccount by remember { mutableStateOf(false) }
                                     var showAdvanced by remember { mutableStateOf(false) }
+                                    var showFeedback by remember { mutableStateOf(false) }
+                                    var isDarkTheme by remember { mutableStateOf(keyStore.isDarkTheme()) }
+                                    var currentLang by remember { mutableStateOf(keyStore.getLanguage()) }
                                     val currentKey = remember(showSettings, showAccount, isActivated) { keyStore.get() ?: "" }
                                     val isVip = currentKey.contains("VIP", ignoreCase = true) || currentKey.contains("PRO", ignoreCase = true)
 
@@ -168,6 +171,7 @@ class MainActivity : ComponentActivity() {
                                         androidx.compose.foundation.layout.Box(modifier = Modifier.fillMaxSize()) {
                                             AnimatedContent(
                                                 targetState = when {
+                                                    showFeedback -> 4
                                                     showAdvanced -> 3
                                                     showAccount -> 2
                                                     showSettings -> 1
@@ -185,9 +189,26 @@ class MainActivity : ComponentActivity() {
                                                 label = "ScreenTransition",
                                             ) { screen ->
                                                 when (screen) {
+                                                    4 -> {
+                                                        com.example.foxy.ui.settings.FeedbackScreen(
+                                                            onBack = { showFeedback = false },
+                                                            isDarkTheme = isDarkTheme,
+                                                        )
+                                                    }
                                                     3 -> {
                                                         com.example.foxy.ui.settings.AdvancedSettingsScreen(
                                                             onBack = { showAdvanced = false },
+                                                            isDarkTheme = isDarkTheme,
+                                                            onDarkThemeChange = { enabled ->
+                                                                isDarkTheme = enabled
+                                                                keyStore.setDarkTheme(enabled)
+                                                            },
+                                                            currentLanguage = currentLang,
+                                                            onLanguageChange = { lang ->
+                                                                currentLang = lang
+                                                                keyStore.setLanguage(lang)
+                                                            },
+                                                            onFeedbackClick = { showFeedback = true },
                                                         )
                                                     }
                                                     2 -> {
@@ -200,6 +221,7 @@ class MainActivity : ComponentActivity() {
                                                                 showAccount = false
                                                                 showSettings = false
                                                                 showAdvanced = false
+                                                                showFeedback = false
                                                             },
                                                             showBottomNav = false,
                                                         )
@@ -212,6 +234,7 @@ class MainActivity : ComponentActivity() {
                                                             onAdvancedClick = { showAdvanced = true },
                                                             onBack = { showSettings = false },
                                                             isVip = isVip,
+                                                            isDarkTheme = isDarkTheme,
                                                         )
                                                     }
                                                     else -> {
@@ -220,6 +243,7 @@ class MainActivity : ComponentActivity() {
                                                             onMenuClick   = { showSettings = true },
                                                             onServerClick = { showSettings = true },
                                                             showBottomNav = false,
+                                                            isDarkTheme   = isDarkTheme,
                                                         )
                                                     }
                                                 }

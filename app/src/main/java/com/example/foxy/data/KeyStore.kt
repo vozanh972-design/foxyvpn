@@ -64,10 +64,22 @@ class KeyStore(context: Context) {
         return "FOXY-${hex.take(4)}-${hex.drop(4).take(4)}-${hex.drop(8).take(4)}-${hex.takeLast(4)}"
     }
 
+    fun isDarkTheme(): Boolean = prefs.getBoolean(KEY_DARK_THEME, false)
+    fun setDarkTheme(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_DARK_THEME, enabled).apply()
+    }
+
+    fun getLanguage(): String = prefs.getString(KEY_LANGUAGE, "vi") ?: "vi"
+    fun setLanguage(lang: String) {
+        prefs.edit().putString(KEY_LANGUAGE, lang).apply()
+    }
+
     companion object {
         private const val KEY_LICENSE = "license_key"
         private const val KEY_DEVICE_SIGNATURE = "lifetime_device_signature"
         private const val KEY_ACTIVATED_SIGNATURE = "activated_with_signature"
+        private const val KEY_DARK_THEME = "dark_theme"
+        private const val KEY_LANGUAGE = "app_language"
 
         /** "ABCD1234EFGH5678" -> "ABCD-••••-••••-5678" (dùng cho màn "Gói của tôi"). */
         fun mask(key: String): String =

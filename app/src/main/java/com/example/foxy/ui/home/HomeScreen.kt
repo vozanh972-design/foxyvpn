@@ -99,6 +99,7 @@ fun HomeRoute(
     onServerClick: () -> Unit = {},
     onTabSelected: (HomeTab) -> Unit = {},
     showBottomNav: Boolean = false,
+    isDarkTheme: Boolean = false,
 ) {
     val state by viewModel.state.collectAsState()
     HomeScreen(
@@ -109,6 +110,7 @@ fun HomeRoute(
         onServerClick = onServerClick,
         onTabSelected = onTabSelected,
         showBottomNav = showBottomNav,
+        isDarkTheme = isDarkTheme,
     )
 }
 
@@ -121,10 +123,16 @@ fun HomeScreen(
     onServerClick: () -> Unit = {},
     onTabSelected: (HomeTab) -> Unit = {},
     showBottomNav: Boolean = false,
+    isDarkTheme: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     val isOn = state.status == ConnectionStatus.Connected
     val isBusy = state.status == ConnectionStatus.Connecting
+
+    val bg = if (isDarkTheme) Color(0xFF141414) else BgWhite
+    val ink = if (isDarkTheme) Color(0xFFEEEEEE) else Ink
+    val ink2 = if (isDarkTheme) Color(0xFF9E9E9E) else Ink2
+    val line = if (isDarkTheme) Color(0xFF262626) else LineSoft
 
     val statusHeadline = when {
         isBusy -> "Đang kết nối..."
@@ -141,7 +149,7 @@ fun HomeScreen(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(BgWhite)
+            .background(bg)
             .statusBarsPadding(),
     ) {
         // Top Bar phong cách 1.1.1.1: Logo Foxy + by ThanhMost góc trái, Nút 3 gạch góc phải
@@ -166,7 +174,7 @@ fun HomeScreen(
                 Column {
                     Text(
                         text = "FOXY",
-                        color = Ink,
+                        color = ink,
                         fontSize = 17.sp,
                         fontWeight = FontWeight.Black,
                         letterSpacing = 1.2.sp,
@@ -174,7 +182,7 @@ fun HomeScreen(
                     )
                     Text(
                         text = "by ThanhMost",
-                        color = Ink,
+                        color = ink,
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Bold,
                         lineHeight = 14.sp,
@@ -196,7 +204,7 @@ fun HomeScreen(
                                 .width(20.dp)
                                 .height(2.dp)
                                 .clip(RoundedCornerShape(1.dp))
-                                .background(Ink),
+                                .background(ink),
                         )
                     }
                 }
@@ -221,13 +229,14 @@ fun HomeScreen(
                 on = isOn,
                 enabled = !isBusy,
                 onClick = onPowerClick,
+                isDarkTheme = isDarkTheme,
             )
 
             Spacer(Modifier.height(32.dp))
 
             Text(
                 text = statusHeadline,
-                color = if (isOn) FoxyOrange else Ink,
+                color = if (isOn) FoxyOrange else ink,
                 fontSize = 22.sp,
                 fontWeight = FontWeight.Bold,
                 textAlign = TextAlign.Center,
@@ -237,7 +246,7 @@ fun HomeScreen(
 
             Text(
                 text = statusSubtitle,
-                color = Ink2,
+                color = ink2,
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Normal,
                 textAlign = TextAlign.Center,
@@ -258,7 +267,7 @@ fun HomeScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(1.dp)
-                    .background(LineSoft),
+                    .background(line),
             )
             Row(
                 modifier = Modifier
@@ -269,12 +278,12 @@ fun HomeScreen(
             ) {
                 Text(
                     text = "Thời gian kết nối",
-                    color = Ink2,
+                    color = ink2,
                     fontSize = 13.sp,
                 )
                 Text(
                     text = if (isOn) formatDuration(state.elapsedSeconds) else "--:--:--",
-                    color = if (isOn) Ink else Ink2,
+                    color = if (isOn) ink else ink2,
                     fontSize = 13.sp,
                     fontWeight = FontWeight.SemiBold,
                 )
@@ -360,9 +369,11 @@ private fun PillSwitch(
     on: Boolean,
     enabled: Boolean,
     onClick: () -> Unit,
+    isDarkTheme: Boolean = false,
 ) {
+    val trackOffColor = if (isDarkTheme) Color(0xFF2C2C30) else TrackOff
     val trackColor by animateColorAsState(
-        targetValue = if (on) FoxyOrange else TrackOff,
+        targetValue = if (on) FoxyOrange else trackOffColor,
         animationSpec = tween(300),
         label = "track",
     )
