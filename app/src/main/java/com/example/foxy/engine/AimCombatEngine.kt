@@ -16,13 +16,42 @@ import kotlin.math.sqrt
  */
 object AimCombatEngine {
 
-    const val BONE_HEAD = 12
-    const val BONE_NECK = 11
-    const val BONE_BODY = 7
-    const val BONE_FOOT = 44
+    // ═════════════════════════════════════════════════════════════════════
+    // PLAYER COLLIDER CHECKER & HITPART OFFSETS (Từ dump Core_Keo_Tam)
+    // ═════════════════════════════════════════════════════════════════════
+    // PlayerColliderChecker.HitPart enum (TypeDefIndex: 437):
+    const val HITPART_HEAD = 0          // Head (Đầu)
+    const val HITPART_NECK = 1          // Neck (Cổ)
+    const val HITPART_CHEST = 2         // Chest (Ngực / Thân)
+    const val HITPART_HIPS = 3          // Hips (Hông / Bụng)
+    const val HITPART_LEFT_ARM = 4      // Cánh tay trái
+    const val HITPART_LEFT_FOREARM = 5  // Cẳng tay trái
+    const val HITPART_RIGHT_ARM = 6     // Cánh tay phải
+    const val HITPART_RIGHT_FOREARM = 7 // Cẳng tay phải
+    const val HITPART_LEFT_UP_LEG = 8   // Đùi trái
+    const val HITPART_LEFT_LEG = 9      // Cẳng chân trái
+    const val HITPART_RIGHT_UP_LEG = 10 // Đùi phải
+    const val HITPART_RIGHT_LEG = 11    // Cẳng chân phải
+    const val HITPART_LEFT_FOOT = 12    // Bàn chân trái
+    const val HITPART_RIGHT_FOOT = 13   // Bàn chân phải
+    const val HITPART_WEAKPOINT = 19    // WeakPoint (Điểm yếu chí mạng)
+
+    // Alias tương thích UI BoostPanel
+    const val BONE_HEAD = HITPART_HEAD
+    const val BONE_NECK = HITPART_NECK
+    const val BONE_BODY = HITPART_CHEST
+    const val BONE_FOOT = HITPART_LEFT_FOOT
+
+    // Offsets Il2Cpp đã dịch ngược từ COW Assembly-CSharp:
+    const val OFFSET_COLLIDER_INFO_HITBOX_TYPE = 0x18       // ColliderInfo.m_hitBoxType
+    const val OFFSET_PLAYER_COLLIDER_LIST = 0x20           // PlayerColliderChecker.m_colliderInfoList
+    const val OFFSET_CROSSHAIR_LAST_AIM_TARGET = 0x220     // UIHudCrosshairsController.m_LastAimTargetPlayerID
+    const val OFFSET_CROSSHAIR_HIT_HEADSHOT = 0x128        // UIHudCrosshairsController.m_HitHintIsHeadShot
+    const val OFFSET_CROSSHAIR_RECOIL_BINDING = 0x1B0      // UIHudCrosshairsController.m_RecoilCrosshair
+    const val OFFSET_AIM_ASSIST_MAX_DISTANCE = 300f        // WeaponAimAssistAutoAbsorbData.max_distance
 
     @Volatile var isAimEnabled: Boolean = false
-    @Volatile var targetBone: Int = BONE_HEAD
+    @Volatile var targetBone: Int = HITPART_HEAD
 
     /**
      * Cấu hình từ giao diện Chế độ ghim (BoostPanel).

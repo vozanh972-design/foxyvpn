@@ -182,15 +182,10 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner, ViewM
                         boost           = boost,
                         onBoostChange   = { newBoost ->
                             boost = newBoost
-                            // ═══ CHẾ ĐỘ GHIM (Chuẩn ShinMod 04_aim_headshot_combat / setHsBone) ═══
-                            val bone = when (newBoost.aimTarget) {
-                                AimTarget.Neck -> AimCombatEngine.BONE_HEAD // ĐẦU (Bone 12) - ghim thẳng đầu kéo tâm lên headshot
-                                AimTarget.Body -> AimCombatEngine.BONE_BODY // THÂN (Bone 7) - ngực / thân
-                                AimTarget.Foot -> AimCombatEngine.BONE_FOOT // CHÂN (Bone 44) - chân
-                            }
+                            // ═══ CHẾ ĐỘ GHIM (Khớp chuẩn PlayerColliderChecker.HitPart từ Core_Keo_Tam) ═══
                             AimCombatEngine.configure(
                                 enabled = newBoost.pinEnabled,
-                                bone = bone,
+                                bone = newBoost.aimTarget.boneId,
                             )
                         },
                         onEagleEyeChange= { checked ->

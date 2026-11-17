@@ -45,20 +45,23 @@ import androidx.compose.ui.unit.sp
 import com.example.foxy.R
 import com.example.foxy.ui.theme.VeilColors
 
+import com.example.foxy.engine.AimCombatEngine
+
 private val CardBg = Color.White.copy(alpha = 0.07f)
 private val Soft = Color(0xFF9FB3B6)
 private val GrayscaleFilter = ColorFilter.colorMatrix(ColorMatrix().apply { setToSaturation(0f) })
 private const val CHARACTER_ASPECT = 550f / 800f
 
-enum class AimTarget(val label: String, val yFraction: Float) {
-    Neck("Cổ", 0.155f),
-    Body("Thân", 0.34f),
-    Foot("Chân", 0.68f),
+enum class AimTarget(val label: String, val yFraction: Float, val boneId: Int) {
+    Head("Đầu", 0.08f, AimCombatEngine.HITPART_HEAD),
+    Neck("Cổ", 0.17f, AimCombatEngine.HITPART_NECK),
+    Body("Thân", 0.35f, AimCombatEngine.HITPART_CHEST),
+    Foot("Chân", 0.70f, AimCombatEngine.HITPART_LEFT_FOOT),
 }
 
 data class BoostState(
     val pinEnabled: Boolean = false,
-    val aimTarget: AimTarget = AimTarget.Neck,
+    val aimTarget: AimTarget = AimTarget.Head,
 )
 
 /** Nội dung tab "Tăng tốc" (tia sét): khung nhân vật + đường kẻ ghim bên trái, chế độ ghim bên phải. */
