@@ -40,7 +40,7 @@ class FreefireVpnService : VpnService() {
         private const val VPN_ADDRESS  = "10.8.0.2"
         private const val VPN_DNS      = "8.8.8.8"
         private const val VPN_DNS2     = "8.8.4.4"
-        private const val MTU          = 1500
+        private const val MTU          = 1400
 
         // Broadcast
         const val BROADCAST_STATE  = "com.example.foxy.vpn.STATE"
@@ -65,13 +65,6 @@ class FreefireVpnService : VpnService() {
         showNotification()
 
         scope.launch {
-            // ════════════════════════════════════════════════════════
-            // RESTART LOOP — equivalent của watchdog A1$100000003 trong gốc:
-            //   A1$100000001.run(): engine.start() thoát → setRunning(false)
-            //   A1$100000003.run(): detect → sleep(0x3e8=1000ms) → post restart
-            //   A1$100000003$100000002.run(): rebuild VPN + engine mới
-            // Nếu không có loop này: engine exit → game mất mạng mãi mãi
-            // ════════════════════════════════════════════════════════
             while (running.get()) {
                 try {
                     doStartTunnel()
@@ -79,8 +72,6 @@ class FreefireVpnService : VpnService() {
                     Log.e(TAG, "Tunnel error: $e")
                 }
 
-                // Nếu vẫn running (stopVpn chưa gọi) → rebuild sau 1000ms
-                // 1000ms = 0x3e8 (C0026A1.smali line 6188 watchdog sleep)
                 if (running.get()) {
                     Log.i(TAG, "Engine stopped, restarting in 1s…")
                     try { Thread.sleep(1000) } catch (_: InterruptedException) {}
@@ -101,7 +92,7 @@ class FreefireVpnService : VpnService() {
             .addDnsServer(VPN_DNS)
             .addDnsServer(VPN_DNS2)
             .setMtu(MTU)
-            .setBlocking(true)   // Blocking mode cho tunnel engine
+            .setBlocking(true)
 
         // ════════════════════════════════════════════════════════
         // QUAN TRỌNG: CHỈ route traffic của game vào VPN tunnel

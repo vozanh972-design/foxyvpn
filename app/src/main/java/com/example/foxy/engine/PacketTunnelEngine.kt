@@ -137,15 +137,14 @@ class PacketTunnelEngine(
             workers.submit {
                 try {
                     val sock = Socket()
-                    sock.reuseAddress = true          // ← gốc smali setReuseAddress(true)
-                    sock.bind(InetSocketAddress(0))   // ← gốc: bind trước khi protect
-                    vpn.protect(sock)   // Bypass VPN loop!
-                    sock.keepAlive = true             // ← gốc smali setKeepAlive(true)
-                    sock.sendBufferSize    = 262_144  // ← gốc 0x40000
-                    sock.receiveBufferSize = 262_144  // ← gốc 0x40000
-                    sock.soTimeout = 1_000            // ← gốc 0x3e8=1000ms (KHÔNG PHẢI 30s!)
+                    vpn.protect(sock)   // Bypass VPN loop! Protect BEFORE connect
+                    sock.reuseAddress = true
                     sock.tcpNoDelay = true
-                    sock.connect(InetSocketAddress(dstIp, dstPort), 10_000)
+                    sock.keepAlive = true
+                    sock.sendBufferSize    = 262_144
+                    sock.receiveBufferSize = 262_144
+                    sock.soTimeout = 60_000   // 60s timeout, không ngắt idle sau 1s
+                    sock.connect(InetSocketAddress(dstIp, dstPort), 12_000)
 
                     flow.socket    = sock
                     flow.connected = true
@@ -158,6 +157,9 @@ class PacketTunnelEngine(
                         win  = 65535, data = ByteArray(0)))
                     flow.clientNext = seqNum + 1L
                     flow.serverNext = flow.myIsn + 1L
+
+                    // Xử lý các gói dữ liệu đến sớm trong pending buffer
+                    flow.drainPending(dstIp, dstPort, srcIp, srcPort)
 
                     // Thread đọc server → inject vào TUN
                     workers.submit { tcpServerToClient(flow, flowKey, srcIp, srcPort, dstIp, dstPort) }
@@ -176,34 +178,35 @@ class PacketTunnelEngine(
         // Data / FIN
         val flow = tcpFlows[flowKey] ?: return
 
-        // Đợi connected — không block main thread
-        if (!flow.connected) return
-
         flow.lastUsed = System.currentTimeMillis()
 
         if (payload.isNotEmpty()) {
-            // Gốc (TcpFlow line 120): writes: ConcurrentLinkedQueue — writer thread riêng
-            // Ta: submit worker, synchronized(flow) để giữ ordering, không block main thread
-            val data     = payload          // đã copyOfRange → independent copy
+            val data     = payload
             val fKey     = flowKey
             val fRef     = flow
             val sIp      = srcIp; val sPort = srcPort
             val dIp      = dstIp; val dPort = dstPort
-            workers.submit {
-                try {
-                    synchronized(fRef) {
+            val expectedNext = seqNum + data.size.toLong()
+
+            synchronized(fRef.writeLock) {
+                if (!fRef.connected) {
+                    // Buffer gói tin đến sớm, tuyệt đối không drop
+                    fRef.pendingWrites.add(data)
+                    if (expectedNext > fRef.clientNext) fRef.clientNext = expectedNext
+                } else {
+                    try {
                         fRef.socket?.outputStream?.write(data)
                         fRef.socket?.outputStream?.flush()
-                        fRef.clientNext += data.size.toLong()
+                        if (expectedNext > fRef.clientNext) fRef.clientNext = expectedNext
+                        // ACK gửi SAU KHI write thành công
+                        writeTun(buildTcpPkt(dIp, dPort, sIp, sPort,
+                            seq   = fRef.serverNext,
+                            ack   = fRef.clientNext,
+                            flags = TCP_ACK, win = 65535, data = ByteArray(0)))
+                    } catch (e: Exception) {
+                        Log.w(TAG, "TCP forward error: $e")
+                        tcpFlows.remove(fKey)?.socket?.close()
                     }
-                    // ACK gửi SAU KHI write thành công (giống gốc)
-                    writeTun(buildTcpPkt(dIp, dPort, sIp, sPort,
-                        seq   = fRef.serverNext,
-                        ack   = fRef.clientNext,
-                        flags = TCP_ACK, win = 65535, data = ByteArray(0)))
-                } catch (e: Exception) {
-                    Log.w(TAG, "TCP forward error: $e")
-                    tcpFlows.remove(fKey)?.socket?.close()
                 }
             }
         }
@@ -348,7 +351,7 @@ class PacketTunnelEngine(
                 flow.lastUsed = System.currentTimeMillis()
             }
         } catch (e: SocketTimeoutException) {
-            Log.d(TAG, "UDP flow $flowKey timeout")
+            if (!flowKey.endsWith(":53")) Log.d(TAG, "UDP flow $flowKey timeout")
         } catch (e: Exception) {
             if (running.get()) Log.d(TAG, "UDP receive error $flowKey: ${e.message}")
         } finally {
@@ -511,6 +514,28 @@ class PacketTunnelEngine(
         @Volatile var clientNext: Long = clientIsn + 1L
         @Volatile var serverNext: Long = myIsn + 1L
         @Volatile var lastUsed = System.currentTimeMillis()
+        val pendingWrites = java.util.concurrent.ConcurrentLinkedQueue<ByteArray>()
+        val writeLock = Any()
+
+        fun drainPending(dIp: String, dPort: Int, sIp: String, sPort: Int) {
+            val sock = socket ?: return
+            synchronized(writeLock) {
+                while (true) {
+                    val chunk = pendingWrites.poll() ?: break
+                    try {
+                        sock.outputStream.write(chunk)
+                    } catch (e: Exception) {
+                        Log.w(TAG, "drainPending write error: $e")
+                        break
+                    }
+                }
+                try { sock.outputStream.flush() } catch (_: Exception) {}
+            }
+            writeTun(buildTcpPkt(dIp, dPort, sIp, sPort,
+                seq   = serverNext,
+                ack   = clientNext,
+                flags = TCP_ACK, win = 65535, data = ByteArray(0)))
+        }
     }
 
     class UdpFlowState {
