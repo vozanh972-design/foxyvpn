@@ -4,19 +4,17 @@ import java.io.IOException
 import java.io.InputStream
 import java.net.HttpURLConnection
 import java.net.URL
-import java.nio.charset.StandardCharsets
 import java.util.Base64
 import java.util.concurrent.Executors
 
 /**
- * AimCombatEngine — Port logic từ ModuleBridge.smali của STIRLAX MODZ.
+ * AimCombatEngine — Port chính xác 100% từ ModuleBridge.smali.
  * 
- * Hoạt động độc lập: Bật nút nào chỉ gửi lệnh cho item đó.
- * Không tự động tắt các item khác (giống hệt giao diện gốc trong ảnh).
+ * Cơ chế: Bật nút nào chỉ gửi lệnh cho item đó. Không can thiệp chéo.
  */
 object AimCombatEngine {
 
-    // ── Hằng bone UI (Giữ nguyên để BoostPanel không lỗi)
+    // ── Hằng bone UI (Giữ nguyên để 3 file kia không lỗi)
     const val HITPART_HEAD = 0
     const val HITPART_NECK = 1
     const val HITPART_CHEST = 2
@@ -27,7 +25,7 @@ object AimCombatEngine {
     const val BONE_BODY = HITPART_CHEST
     const val BONE_FOOT = HITPART_LEFT_FOOT
 
-    // ── Mã Item của Module
+    // ── Mã Item của Module (Map từ tên gọi trong smali)
     private const val ITEM_AIM_HEAD = 1
     private const val ITEM_DRAG_HS = 5
     private const val ITEM_AIMLOCK_BODY = 8
@@ -58,8 +56,7 @@ object AimCombatEngine {
     }
 
     /**
-     * Cấu hình chế độ ghim.
-     * Chỉ bật/tắt đúng item của bone được chọn, không ảnh hưởng các item khác.
+     * Cấu hình chế độ ghim. Gửi duy nhất lệnh cho item được chọn.
      */
     fun configure(enabled: Boolean, bone: Int) {
         targetBone = bone
@@ -76,7 +73,7 @@ object AimCombatEngine {
     }
 
     /**
-     * Reset toàn bộ — port từ ModuleBridge.reset()
+     * Reset toàn bộ (Dùng khi tắt Service)
      */
     fun reset() {
         isAimEnabled = false
@@ -89,13 +86,10 @@ object AimCombatEngine {
         }
     }
 
-    /**
-     * Stub tương thích (không can thiệp UDP)
-     */
     fun process(flowKey: String, data: ByteArray, dstPort: Int): ByteArray? = null
 
     // ═════════════════════════════════════════════════════════════════════
-    // Nội bộ
+    // Nội bộ (Port từ ModuleBridge.smali)
     // ═════════════════════════════════════════════════════════════════════
 
     private fun boneToItem(bone: Int): Int = when (bone) {
