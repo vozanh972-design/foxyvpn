@@ -8,11 +8,19 @@ import kotlin.math.sqrt
  * Nguyên lý hoạt động từ ShinMod (libshinmod.so & libstub.so):
  * - Can thiệp gói tin UDP outbound (gửi từ game lên Garena Server).
  * - Sửa trường bone_id tại offset 0x24 (trong struct FF_Entity 108 bytes) thành bone mục tiêu:
- *     Bone 12 = Head (Đầu)
- *     Bone 11 = Neck (Cổ)
- *     Bone 7  = Spine Upper / Chest (Thân)
- *     Bone 44 = Left Foot (Chân) / Bone 48 = Right Foot
- * - Kết hợp định vị tọa độ mục tiêu gần nhất từ EspEntityStore để tối ưu hóa góc bắn.
+ *     Bone 0  = Head (Đầu)   ← HITPART_HEAD (PlayerColliderChecker.HitPart)
+ *     Bone 1  = Neck (Cổ)
+ *     Bone 2  = Chest (Thân)
+ *     Bone 12 = Left Foot (Chân)
+ * - headerSize xác định chính xác từ data[0]: < 100 → 10 bytes, ≥ 100 → 8 bytes
+ *   (cùng logic với UdpSessionParser.parse() và PoseFreezeEngine.rewritePosition())
+ *
+ * Điều kiện kích hoạt (theo AIMBOT HEAD logic từ Stirlax Modz):
+ *   - isAimEnabled == true (CHẾ ĐỘ GHIM bật)
+ *   - Đang bắn: command 104 đã được observe bởi FreezeController (isFiring)
+ *     HOẶC NetworkFeatures.magnetActive()
+ *   - Không cần localPlayer hay địch trong range → bone rewrite áp dụng ngay
+ *     khi detect firing, giống hệt cách AIMBOT HEAD hoạt động qua module 7755.
  */
 object AimCombatEngine {
 
@@ -44,11 +52,11 @@ object AimCombatEngine {
 
     // Offsets Il2Cpp đã dịch ngược từ COW Assembly-CSharp:
     const val OFFSET_COLLIDER_INFO_HITBOX_TYPE = 0x18       // ColliderInfo.m_hitBoxType
-    const val OFFSET_PLAYER_COLLIDER_LIST = 0x20           // PlayerColliderChecker.m_colliderInfoList
-    const val OFFSET_CROSSHAIR_LAST_AIM_TARGET = 0x220     // UIHudCrosshairsController.m_LastAimTargetPlayerID
-    const val OFFSET_CROSSHAIR_HIT_HEADSHOT = 0x128        // UIHudCrosshairsController.m_HitHintIsHeadShot
-    const val OFFSET_CROSSHAIR_RECOIL_BINDING = 0x1B0      // UIHudCrosshairsController.m_RecoilCrosshair
-    const val OFFSET_AIM_ASSIST_MAX_DISTANCE = 300f        // WeaponAimAssistAutoAbsorbData.max_distance
+    const val OFFSET_PLAYER_COLLIDER_LIST = 0x20            // PlayerColliderChecker.m_colliderInfoList
+    const val OFFSET_CROSSHAIR_LAST_AIM_TARGET = 0x220      // UIHudCrosshairsController.m_LastAimTargetPlayerID
+    const val OFFSET_CROSSHAIR_HIT_HEADSHOT = 0x128         // UIHudCrosshairsController.m_HitHintIsHeadShot
+    const val OFFSET_CROSSHAIR_RECOIL_BINDING = 0x1B0       // UIHudCrosshairsController.m_RecoilCrosshair
+    const val OFFSET_AIM_ASSIST_MAX_DISTANCE = 300f         // WeaponAimAssistAutoAbsorbData.max_distance
 
     @Volatile var isAimEnabled: Boolean = false
     @Volatile var targetBone: Int = HITPART_HEAD
@@ -63,43 +71,39 @@ object AimCombatEngine {
 
     /**
      * Xử lý gói tin outbound UDP từ client lên server.
-     * Trả về ByteArray đã được rewrite bone_id hoặc null nếu không cần chỉnh sửa.
+     *
+     * Logic theo đúng AIMBOT HEAD (Stirlax Modz / ModuleBridge item1):
+     *   1. Guard: tính năng bật + không phải DNS + gói đủ lớn
+     *   2. Guard: đang bắn (command 104 observe qua FreezeController) HOẶC magnet active
+     *   3. Xác định headerSize đúng chuẩn (data[0] < 100 → 10, ≥ 100 → 8)
+     *      — cùng logic UdpSessionParser & PoseFreezeEngine
+     *   4. Rewrite byte tại [headerSize + 0x24] = targetBone
+     *
+     * Không cần localPlayer hay địch trong range: giống AIMBOT HEAD module,
+     * bone rewrite áp dụng ngay trên mọi gói fire packet hợp lệ.
+     *
+     * Trả về ByteArray đã rewrite hoặc null nếu không cần chỉnh sửa.
      */
     fun process(flowKey: String, data: ByteArray, dstPort: Int): ByteArray? {
-        // 1. Kiểm tra trạng thái kích hoạt, cổng và kích thước gói tin tối thiểu
+        // 1. Guard cơ bản: tính năng tắt / DNS passthrough / gói quá ngắn
         if (!isAimEnabled || dstPort == 53 || data.size < 40) return null
 
-        // 2. Bảo vệ tuyệt đối sảnh chờ / loading: chỉ kích hoạt khi đã ở trong trận (ESP xác nhận localPlayer)
-        val snapshot = EspEntityStore.snapshot()
-        val local = snapshot.localPlayer ?: return null
-
-        // 3. Chỉ can thiệp khi đang trong trạng thái giao tranh (nhận lệnh bắn command 104 hoặc magnet)
+        // 2. Guard bắn: chỉ can thiệp khi đang thực sự bắn
+        //    FreezeController.isFiring() = true khi đã nhận command 104 (fire start)
+        //    và chưa nhận command 105 (fire stop), với hold window 700ms.
+        //    NetworkFeatures.magnetActive() = fallback khi magnet bật + đang fire pulse.
         val isFiring = FreezeController.isFiring() || NetworkFeatures.magnetActive()
         if (!isFiring) return null
 
-        // 4. Tìm kiếm mục tiêu kẻ địch hợp lệ trong cự ly tác chiến (< 350m)
-        val remotes = snapshot.entities
-        var hasTargetInRange = false
-        for (enemy in remotes) {
-            if (enemy.id == local.id || enemy.dead || enemy.health <= 0) continue
-            val dx = enemy.x - local.x
-            val dy = enemy.y - local.y
-            val dz = enemy.z - local.z
-            val dist = sqrt(dx * dx + dy * dy + dz * dz)
-
-            if (dist < 350f) {
-                hasTargetInRange = true
-                break
-            }
-        }
-        if (!hasTargetInRange) return null
-
-        // 5. Chuẩn ShinMod (04_aim_headshot_combat / FF_Entity struct 108 bytes):
-        // Chỉ can thiệp đúng 1 trường bone_id tại offset 0x24 trong payload thực thể
+        // 3. Xác định headerSize theo cùng công thức UdpSessionParser / PoseFreezeEngine:
+        //    data[0] in [90,99] → headerSize = 10
+        //    data[0] in [100,109] → headerSize = 8
         val headerSize = if ((data[0].toInt() and 0xFF) < 100) 10 else 8
         val boneOffset = headerSize + 0x24
         if (boneOffset >= data.size) return null
 
+        // 4. Rewrite bone_id tại offset 0x24 sau header
+        //    (chuẩn ShinMod FF_Entity struct 108 bytes, field bone_id tại 0x24)
         val modified = data.clone()
         modified[boneOffset] = targetBone.toByte()
         return modified
