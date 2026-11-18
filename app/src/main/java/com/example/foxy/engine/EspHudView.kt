@@ -118,18 +118,52 @@ class EspHudView(context: Context) : View(context) {
                     floatArrayOf(it[0], it[1])
                 }
 
-            // ── Project skeleton 11 điểm theo posture ─────────────
-            val sHEAD    = proj(ex,       ey + 1.75f * ph, ez)
-            val sNECK    = proj(ex,       ey + 1.55f * ph, ez)
-            val sCHEST   = proj(ex,       ey + 1.35f * ph, ez)
-            val sBELLY   = proj(ex,       ey + 1.00f * ph, ez)
-            val sPELVIS  = proj(ex,       ey + 0.75f * ph, ez)
-            val sLSHOULD = proj(ex - shW, ey + 1.40f * ph, ez)
-            val sRSHOULD = proj(ex + shW, ey + 1.40f * ph, ez)
-            val sLHAND   = proj(ex - hdW, ey + 0.90f * ph, ez)
-            val sRHAND   = proj(ex + hdW, ey + 0.90f * ph, ez)
-            val sLFOOT   = proj(ex - 0.2f, ey + 0.0f,     ez)
-            val sRFOOT   = proj(ex + 0.2f, ey + 0.0f,     ez)
+            // ── Project skeleton 11 điểm: thử bone thực → fallback ước tính ──
+            // Đọc bone thực từ memory nếu có boneBaseAddr
+            val bone: BoneSkeleton? = if (entity.boneBaseAddr > 0L)
+                BoneMemReader.readSkeleton(entity.boneBaseAddr)
+            else null
+
+            val sHEAD:    FloatArray?
+            val sNECK:    FloatArray?
+            val sCHEST:   FloatArray?
+            val sBELLY:   FloatArray?
+            val sPELVIS:  FloatArray?
+            val sLSHOULD: FloatArray?
+            val sRSHOULD: FloatArray?
+            val sLHAND:   FloatArray?
+            val sRHAND:   FloatArray?
+            val sLFOOT:   FloatArray?
+            val sRFOOT:   FloatArray?
+
+            if (bone != null) {
+                // ── Dùng bone positions thực từ memory (world XYZ) ──
+                fun bProj(b: FloatArray?) = b?.let { proj(it[0], it[1], it[2]) }
+                sHEAD    = bProj(bone.head)
+                sNECK    = bProj(bone.neck)
+                sCHEST   = bProj(bone.spine1)      // bone_Spine1 = ngực
+                sBELLY   = bProj(bone.spine)        // bone_Spine  = bụng
+                sPELVIS  = bProj(bone.hips)         // bone_Hips   = hông/pelvis
+                sLSHOULD = bProj(bone.leftClav)     // bone_LeftClav  = vai trái
+                sRSHOULD = bProj(bone.rightClav)    // bone_RightClav = vai phải
+                sLHAND   = bProj(bone.leftHand)     // bone_LeftHand
+                sRHAND   = bProj(bone.rightHand)    // bone_RightHand
+                sLFOOT   = bProj(bone.leftAnkle)    // bone_LeftAnkle
+                sRFOOT   = bProj(bone.rightAnkle)   // bone_RightAnkle
+            } else {
+                // ── Fallback: ước tính tương đối (logic gốc) ──
+                sHEAD    = proj(ex,       ey + 1.75f * ph, ez)
+                sNECK    = proj(ex,       ey + 1.55f * ph, ez)
+                sCHEST   = proj(ex,       ey + 1.35f * ph, ez)
+                sBELLY   = proj(ex,       ey + 1.00f * ph, ez)
+                sPELVIS  = proj(ex,       ey + 0.75f * ph, ez)
+                sLSHOULD = proj(ex - shW, ey + 1.40f * ph, ez)
+                sRSHOULD = proj(ex + shW, ey + 1.40f * ph, ez)
+                sLHAND   = proj(ex - hdW, ey + 0.90f * ph, ez)
+                sRHAND   = proj(ex + hdW, ey + 0.90f * ph, ez)
+                sLFOOT   = proj(ex - 0.2f, ey + 0.0f,     ez)
+                sRFOOT   = proj(ex + 0.2f, ey + 0.0f,     ez)
+            }
 
             if (sHEAD == null) {
                 drawEdge(canvas, snapshot, entity, dist, W, H)

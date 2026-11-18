@@ -42,6 +42,8 @@ object EspEntityStore {
         // Bit flags: 0=fire, 1=aim/scope, 2=crouch, 3=prone, 4=sprint, 5=moving
         val actionFlag:  Int     = 0,
         val moveSpeed:   Float   = 0f,      // velocity magnitude từ packet
+        // ── Bone cluster address (từ BoneMemReader scan) ──
+        val boneBaseAddr: Long   = 0L,      // 0 = chưa có, >0 = địa chỉ bone[0] trong /proc/PID/mem
     ) {
         // ── Action flag helpers ──────────────────────────────────
         val isFiring:   Boolean get() = (actionFlag and 0x01) != 0
