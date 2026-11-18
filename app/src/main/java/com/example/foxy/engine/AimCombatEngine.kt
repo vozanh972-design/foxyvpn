@@ -38,7 +38,6 @@ object AimCombatEngine {
     const val BONE_BODY = HITPART_CHEST
     const val BONE_FOOT = HITPART_LEFT_FOOT
 
-<<<<<<< HEAD
     // Offsets Il2Cpp đã dịch ngược từ COW Assembly-CSharp:
     const val OFFSET_COLLIDER_INFO_HITBOX_TYPE = 0x18       // ColliderInfo.m_hitBoxType
     const val OFFSET_PLAYER_COLLIDER_LIST = 0x20            // PlayerColliderChecker.m_colliderInfoList
@@ -46,16 +45,15 @@ object AimCombatEngine {
     const val OFFSET_CROSSHAIR_HIT_HEADSHOT = 0x128         // UIHudCrosshairsController.m_HitHintIsHeadShot
     const val OFFSET_CROSSHAIR_RECOIL_BINDING = 0x1B0       // UIHudCrosshairsController.m_RecoilCrosshair
     const val OFFSET_AIM_ASSIST_MAX_DISTANCE = 300f         // WeaponAimAssistAutoAbsorbData.max_distance
-=======
+
     // ── URL cơ sở
     private const val BASE_URL = "http://127.0.0.1:7755"
     private const val ORIGIN = "http://127.0.0.1:7755"
-    
+
     // ── Hàng đợi luồng (giống Executor trong FloatingService)
     private val executor = Executors.newSingleThreadExecutor { r ->
         Thread(r, "AimCombat-http").apply { isDaemon = true }
     }
->>>>>>> 21efc3d4548df609773273e217983335c9b984a6
 
     // ── Trạng thái lưu cho UI
     @Volatile var isAimEnabled: Boolean = false
@@ -88,7 +86,6 @@ object AimCombatEngine {
     }
 
     /**
-<<<<<<< HEAD
      * Xử lý gói tin outbound UDP từ client lên server.
      *
      * Logic theo đúng AIMBOT HEAD (Stirlax Modz / ModuleBridge item1):
@@ -108,30 +105,20 @@ object AimCombatEngine {
         if (!isAimEnabled || dstPort == 53 || data.size < 40) return null
 
         // 2. Guard bắn: chỉ can thiệp khi đang thực sự bắn
-        //    FreezeController.isFiring() = true khi đã nhận command 104 (fire start)
-        //    và chưa nhận command 105 (fire stop), với hold window 700ms.
-        //    NetworkFeatures.magnetActive() = fallback khi magnet bật + đang fire pulse.
         val isFiring = FreezeController.isFiring() || NetworkFeatures.magnetActive()
         if (!isFiring) return null
 
-        // 3. Xác định headerSize theo cùng công thức UdpSessionParser / PoseFreezeEngine:
-        //    data[0] in [90,99] → headerSize = 10
-        //    data[0] in [100,109] → headerSize = 8
+        // 3. Xác định headerSize
         val headerSize = if ((data[0].toInt() and 0xFF) < 100) 10 else 8
         val boneOffset = headerSize + 0x24
         if (boneOffset >= data.size) return null
 
-        // 4. Rewrite bone_id tại offset 0x24 sau header
-        //    (chuẩn ShinMod FF_Entity struct 108 bytes, field bone_id tại 0x24)
+        // 4. Rewrite bone_id
         val modified = data.clone()
         modified[boneOffset] = targetBone.toByte()
         return modified
     }
 
-=======
-     * Tương đương ModuleBridge.reset()
-     */
->>>>>>> 21efc3d4548df609773273e217983335c9b984a6
     fun reset() {
         isAimEnabled = false
         executor.execute {
@@ -142,11 +129,6 @@ object AimCombatEngine {
             }
         }
     }
-
-    /**
-     * Tương đương ModuleBridge.process() (can thiệp UDP cũ - đã bỏ)
-     */
-    fun process(flowKey: String, data: ByteArray, dstPort: Int): ByteArray? = null
 
     // ═════════════════════════════════════════════════════════════════════
     // PHẦN DỊCH 1:1 TỪ ModuleBridge.smali BẮT ĐẦU TỪ ĐÂY
