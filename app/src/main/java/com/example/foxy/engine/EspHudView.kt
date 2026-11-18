@@ -143,37 +143,13 @@ class EspHudView(context: Context) : View(context) {
             val footScrY = sLFOOT?.get(1) ?: (sRFOOT?.get(1) ?: headScrY + 80f)
             smoothFrames[entity.id] = floatArrayOf(footScrX, footScrY, headScrX, headScrY)
 
-            // ── Setup Paint skeleton ───────────────────────────────
-            paint.style       = Paint.Style.STROKE
-            paint.strokeWidth = dp(2f)
-            paint.color       = skelColor
-            paint.strokeCap   = Paint.Cap.ROUND
-            paint.strokeJoin  = Paint.Join.ROUND
-
-            fun bone(a: FloatArray?, b: FloatArray?) {
-                if (a == null || b == null) return
-                canvas.drawLine(a[0], a[1], b[0], b[1], paint)
-            }
-
-            // ══ SKELETON ═══════════════════════════════════════════
-            bone(sHEAD,    sNECK)
-            bone(sNECK,    sCHEST)
-            bone(sCHEST,   sBELLY)
-            bone(sBELLY,   sPELVIS)
-            bone(sCHEST,   sLSHOULD); bone(sLSHOULD, sLHAND)
-            bone(sCHEST,   sRSHOULD); bone(sRSHOULD, sRHAND)
-            bone(sPELVIS,  sLFOOT)
-            bone(sPELVIS,  sRFOOT)
-
-            // Vòng đầu
-            if (sNECK != null) {
-                val headR = kotlin.math.hypot(headScrX - sNECK[0], headScrY - sNECK[1]) * 0.5f
-                if (headR in 1f..60f) {
-                    paint.style = Paint.Style.STROKE
-                    paint.strokeWidth = dp(1.5f)
-                    canvas.drawCircle(headScrX, headScrY, headR.coerceIn(3f, 24f), paint)
-                }
-            }
+            // ══ SILHOUETTE ĐẶC (filled human body shape) ══════════
+            // Thay vì vẽ đường xương, vẽ hình người filled giống ảnh tham khảo
+            drawSilhouette(canvas, entity,
+                sHEAD, sNECK, sCHEST, sBELLY, sPELVIS,
+                sLSHOULD, sRSHOULD, sLHAND, sRHAND,
+                sLFOOT, sRFOOT,
+                skelColor, alpha)
 
             // ══ NAMEPLATE NGANG (phía trên đầu) + HP bar bên dưới nameplate ═
             val footRef2 = sLFOOT ?: sRFOOT
@@ -182,6 +158,97 @@ class EspHudView(context: Context) : View(context) {
 
         poseFrames.keys.retainAll(seen)
         smoothFrames.keys.retainAll(seen)
+    }
+
+    // ─── drawSilhouette: Vẽ hình người filled (lớp da) xuyên tường ─────────
+
+    private fun drawSilhouette(
+        canvas: Canvas, entity: EspEntityStore.Entity,
+        sHEAD: FloatArray?, sNECK: FloatArray?, sCHEST: FloatArray?,
+        sBELLY: FloatArray?, sPELVIS: FloatArray?,
+        sLSHOULD: FloatArray?, sRSHOULD: FloatArray?,
+        sLHAND: FloatArray?, sRHAND: FloatArray?,
+        sLFOOT: FloatArray?, sRFOOT: FloatArray?,
+        skelColor: Int, alpha: Int,
+    ) {
+        if (sHEAD == null) return
+
+        val fillColor = Color.argb(
+            (alpha * 0.60f).toInt(),
+            Color.red(skelColor), Color.green(skelColor), Color.blue(skelColor)
+        )
+        val strokeColor = Color.argb(
+            (alpha * 0.90f).toInt(),
+            Color.red(skelColor), Color.green(skelColor), Color.blue(skelColor)
+        )
+
+        // ── HEAD circle ───────────────────────────────────────────────
+        val headRadius = if (sNECK != null)
+            kotlin.math.hypot((sHEAD[0]-sNECK[0]).toDouble(), (sHEAD[1]-sNECK[1]).toDouble())
+                .toFloat().coerceIn(4f, 22f)
+        else dp(8f)
+
+        paint.style = Paint.Style.FILL
+        paint.color = fillColor
+        canvas.drawCircle(sHEAD[0], sHEAD[1], headRadius, paint)
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = dp(1.2f)
+        paint.color = strokeColor
+        canvas.drawCircle(sHEAD[0], sHEAD[1], headRadius, paint)
+
+        // ── TORSO trapezoid (shoulders → pelvis) ─────────────────────
+        if (sLSHOULD != null && sRSHOULD != null && sPELVIS != null) {
+            val hipW = dp(4f)
+            val path = Path()
+            path.moveTo(sLSHOULD[0], sLSHOULD[1])
+            path.lineTo(sRSHOULD[0], sRSHOULD[1])
+            path.lineTo(sPELVIS[0] + hipW, sPELVIS[1])
+            path.lineTo(sPELVIS[0] - hipW, sPELVIS[1])
+            path.close()
+            paint.style = Paint.Style.FILL
+            paint.color = fillColor
+            canvas.drawPath(path, paint)
+            paint.style = Paint.Style.STROKE
+            paint.strokeWidth = dp(1f)
+            paint.color = strokeColor
+            canvas.drawPath(path, paint)
+        }
+
+        // ── ARMS: capsule line (thick stroke) ────────────────────────
+        paint.style = Paint.Style.STROKE
+        paint.strokeCap = Paint.Cap.ROUND
+        paint.strokeWidth = dp(5f)
+        paint.color = fillColor
+        if (sLSHOULD != null && sLHAND != null)
+            canvas.drawLine(sLSHOULD[0], sLSHOULD[1], sLHAND[0], sLHAND[1], paint)
+        if (sRSHOULD != null && sRHAND != null)
+            canvas.drawLine(sRSHOULD[0], sRSHOULD[1], sRHAND[0], sRHAND[1], paint)
+        // Arm outline
+        paint.strokeWidth = dp(5f)
+        paint.color = strokeColor
+        paint.style = Paint.Style.STROKE
+        // (outline will be visually part of fill stroke — no extra call needed)
+
+        // ── LEGS: thick stroke ────────────────────────────────────────
+        paint.style = Paint.Style.STROKE
+        paint.strokeCap = Paint.Cap.ROUND
+        paint.strokeWidth = dp(6f)
+        paint.color = fillColor
+        if (sPELVIS != null && sLFOOT != null)
+            canvas.drawLine(sPELVIS[0], sPELVIS[1], sLFOOT[0], sLFOOT[1], paint)
+        if (sPELVIS != null && sRFOOT != null)
+            canvas.drawLine(sPELVIS[0], sPELVIS[1], sRFOOT[0], sRFOOT[1], paint)
+
+        // ── Leg outline (mỏng hơn, màu stroke) ──────────────────────
+        paint.strokeWidth = dp(1.5f)
+        paint.color = strokeColor
+        if (sPELVIS != null && sLFOOT != null)
+            canvas.drawLine(sPELVIS[0], sPELVIS[1], sLFOOT[0], sLFOOT[1], paint)
+        if (sPELVIS != null && sRFOOT != null)
+            canvas.drawLine(sPELVIS[0], sPELVIS[1], sRFOOT[0], sRFOOT[1], paint)
+
+        // Reset cap
+        paint.strokeCap = Paint.Cap.BUTT
     }
 
     // ─── Nameplate: thanh ngang [WEAPON] NAME STATE_BADGE + HP bar bên dưới ───
@@ -201,11 +268,10 @@ class EspHudView(context: Context) : View(context) {
         }
 
         // ── Background xám tối cho địch, xanh đậm cho đồng đội ───
-        // (theo ảnh mẫu: đồng đội = xanh, địch = xám đậm hoặc đỏ)
         val bgColor = if (isTeammate)
-            Color.argb(220,  20,  55, 130)   // Xanh đậm = teammate (giống ảnh)
+            Color.argb(220,  20,  55, 130)   // Xanh đậm = teammate
         else
-            Color.argb(220,  40,  40,  45)   // Xám rất tối = địch (không đỏ nữa)
+            Color.argb(220,  40,  40,  45)   // Xám rất tối = địch
 
         val accentColor = if (isTeammate)
             Color.argb(255,  50, 150, 255)   // Accent xanh
@@ -224,21 +290,35 @@ class EspHudView(context: Context) : View(context) {
             else               -> 0
         }
 
+        // ── Weapon info (icon + label text) ───────────────────
+        val wIcon  = entity.weaponIcon   // emoji icon (có thể "")
+        val wLabel = entity.weaponLabel  // AR/SMG/SR text (có thể "")
+        // Nấm đấm = weaponType==6, không cầm gì = weaponType==0
+        // Nếu weapon==0: hiện "—" (không cầm gì)
+        val wDisplay = when {
+            wIcon.isNotEmpty()  -> "$wIcon $wLabel"
+            wLabel.isNotEmpty() -> wLabel
+            else                -> ""  // ẩn weapon section
+        }
+
         // ── Measure text ───────────────────────────────────────
         text.typeface  = android.graphics.Typeface.DEFAULT_BOLD
         text.textSize  = dp(9f)
         text.textAlign = Paint.Align.LEFT
 
         val nameW  = text.measureText(displayName)
-        val wLabel = entity.weaponLabel
         text.textSize = dp(7.5f)
-        val wW     = if (wLabel.isNotEmpty()) text.measureText(wLabel) + dp(4f) else 0f
+        val wW     = if (wDisplay.isNotEmpty()) text.measureText(wDisplay) + dp(4f) else 0f
+        // Khoảng cách: hiện nhỏ trong nameplate (thay vì phía trên)
+        text.textSize = dp(7f)
+        val distTxt = "${dist.toInt()}m"
+        val distW   = text.measureText(distTxt) + dp(6f)
         text.textSize = dp(7f)
         val stateW = if (stateTxt.isNotEmpty()) text.measureText(stateTxt) + dp(10f) else 0f
         text.textSize = dp(9f)
 
-        val barH   = dp(15f)   // Chiều cao thanh nameplate
-        val barW   = dp(6f) + wW + nameW + (if (stateW > 0f) stateW + dp(4f) else 0f) + dp(8f)
+        val barH   = dp(15f)
+        val barW   = dp(6f) + wW + nameW + dp(4f) + distW + (if (stateW > 0f) stateW + dp(4f) else 0f) + dp(6f)
         val barW2  = barW.coerceAtLeast(dp(60f))
         val accentW = dp(4f)
 
@@ -260,14 +340,14 @@ class EspHudView(context: Context) : View(context) {
         // ── Nội dung từ trái sang phải ─────────────────────────
         var curX = barL + accentW + dp(5f)
 
-        // Label vũ khí
-        if (wLabel.isNotEmpty()) {
+        // Icon + Label vũ khí (icon emoji)
+        if (wDisplay.isNotEmpty()) {
             text.textSize  = dp(7.5f)
             text.typeface  = android.graphics.Typeface.DEFAULT
-            text.color     = Color.argb(220, 180, 220, 255)
+            text.color     = Color.argb(230, 150, 220, 255)
             text.textAlign = Paint.Align.LEFT
-            canvas.drawText(wLabel, curX, textY, text)
-            curX += text.measureText(wLabel) + dp(5f)
+            canvas.drawText(wDisplay, curX, textY, text)
+            curX += text.measureText(wDisplay) + dp(5f)
         }
 
         // Tên nhân vật (trắng, đậm)
@@ -277,6 +357,14 @@ class EspHudView(context: Context) : View(context) {
         text.textAlign = Paint.Align.LEFT
         canvas.drawText(displayName, curX, textY, text)
         curX += text.measureText(displayName) + dp(4f)
+
+        // Khoảng cách nhỏ (màu xám, thay vì hiện riêng phía trên)
+        text.textSize = dp(7f)
+        text.typeface = android.graphics.Typeface.DEFAULT
+        text.color    = Color.argb(180, 180, 180, 180)
+        text.textAlign = Paint.Align.LEFT
+        canvas.drawText(distTxt, curX, textY, text)
+        curX += text.measureText(distTxt) + dp(4f)
 
         // State badge
         if (stateTxt.isNotEmpty() && stateColor != 0) {
@@ -309,15 +397,6 @@ class EspHudView(context: Context) : View(context) {
         }
         val hpFillR = barL + (barR - barL) * hpRatio
         canvas.drawRoundRect(RectF(barL, hpBarT, hpFillR, hpBarB), dp(1.5f), dp(1.5f), paint)
-
-        // ── Khoảng cách phía trên thanh ───────────────────────
-        text.typeface  = android.graphics.Typeface.DEFAULT
-        text.textSize  = dp(7.5f)
-        text.textAlign = Paint.Align.CENTER
-        text.setShadowLayer(dp(1.5f), 0f, dp(1f), Color.BLACK)
-        text.color = Color.argb(190, 200, 200, 200)
-        canvas.drawText("${dist.toInt()}m", cx, barT - dp(2f), text)
-        text.clearShadowLayer()
     }
 
     // ─── drawEdge: chấm rìa màn hình với màu team ────────────────

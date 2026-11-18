@@ -63,7 +63,6 @@ object EspEntityStore {
             isMoving    -> "MOVE"
             else        -> ""
         }
-
         // Tinh velocity tu diff position / diff time
         fun withPosition(nx: Float, ny: Float, nz: Float, ts: Long): Entity {
             val dt = maxOf(0.001f, (ts - updatedAt) / 1000f)
@@ -100,10 +99,35 @@ object EspEntityStore {
         /** HP % [0.0 .. 1.0] */
         val hpRatio: Float get() = (health.coerceIn(0, maxHealth).toFloat() / maxHealth.toFloat()).coerceIn(0f, 1f)
 
-        /** Label ngắn loại vũ khí để hiển thị trên ESP */
+        /** Label ngắn loại vũ khí để hiển thị trên ESP (kèm icon unicode) */
         val weaponLabel: String get() = when (weaponType) {
-            1 -> "AR"; 2 -> "SMG"; 3 -> "SR"; 4 -> "SG"
-            5 -> "P"; 6 -> "M"; 7 -> "GL"; 8 -> "GR"
+            1 -> "AR"    // Assault Rifle
+            2 -> "SMG"   // Sub Machine Gun
+            3 -> "SR"    // Sniper Rifle
+            4 -> "SG"    // Shotgun
+            5 -> "P"     // Pistol
+            6 -> "M"     // Melee / Nấm đấm
+            7 -> "GL"    // Grenade Launcher
+            8 -> "GR"    // Grenade / Lựu đạn
+            else -> ""   // Chưa biết / không cầm gì
+        }
+
+        /**
+         * Icon Unicode nhỏ hiện trên nameplate thay chỗ khoảng cách.
+         * Dùng emoji đơn giản để hiện loại súng / trạng thái cầm vũ khí.
+         *   weaponType=0 (không cầm gì) → không có icon
+         *   weaponType=6 (melee/nấm đấm) → "✊"
+         *   Còn lại → icon tương ứng
+         */
+        val weaponIcon: String get() = when (weaponType) {
+            1 -> "\uD83D\uDD2B"   // 🔫 AR
+            2 -> "\uD83D\uDD2B"   // 🔫 SMG
+            3 -> "\uD83D\uDD2B"   // 🔫 SR
+            4 -> "\uD83D\uDD2B"   // 🔫 SG
+            5 -> "\uD83D\uDD2B"   // 🔫 Pistol
+            6 -> "\u270A"          // ✊ Melee/nấm đấm
+            7 -> "\uD83D\uDCA5"   // 💥 Launcher
+            8 -> "\uD83D\uDCA3"   // 💣 Grenade
             else -> ""
         }
 
