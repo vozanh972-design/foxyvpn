@@ -67,7 +67,7 @@ class EspHudView(context: Context) : View(context) {
         if (espEnabled) invalidate()
     }
 
-    // ─── drawEsp: Skeleton ESP — xuyên tường, xa=xanh, gần=đỏ ──
+    // ─── drawEsp: Skeleton ESP posture-aware — xuyên tường, xa=xanh, gần=đỏ ──
 
     private fun drawEsp(canvas: Canvas, snapshot: EspEntityStore.Snapshot) {
         val W = width.toFloat()
@@ -75,7 +75,6 @@ class EspHudView(context: Context) : View(context) {
         if (W <= 0f || H <= 0f) return
 
         val now = System.currentTimeMillis()
-        val dt  = if (lastFrame == 0L) 100L else now - lastFrame
         lastFrame = now
 
         val seen = HashSet<Int>()
@@ -93,40 +92,45 @@ class EspHudView(context: Context) : View(context) {
             val pos = interp.sample(entity.x, entity.y, entity.z, entity.updatedAt, now, smoothEnabled)
             val ex = pos[0]; val ey = pos[1]; val ez = pos[2]
 
-            // ── Xác định màu skeleton dựa trên trạng thái + khoảng cách ──
+            // ── Màu theo team + khoảng cách ───────────────────────
             val isTeammate = localTeam >= 0 && entity.team == localTeam && entity.team != 0
             val isKnocked  = entity.knocked
             val alpha = boxAlpha
 
             val skelColor = when {
-                isKnocked  -> Color.argb(alpha, 255, 165,   0)  // Cam = knocked
-                isTeammate -> Color.argb(alpha,  80, 200, 255)  // Cyan = teammate
-                dist < 50f -> Color.argb(alpha, 255,  50,  50)  // Đỏ = địch gần (<50m)
-                dist < 100f-> Color.argb(alpha, 255, 200,  50)  // Vàng = địch trung (50-100m)
-                else       -> Color.argb(alpha,  50, 100, 255)  // Xanh = địch xa (>100m)
+                isKnocked  -> Color.argb(alpha, 255, 165,   0)
+                isTeammate -> Color.argb(alpha,  80, 200, 255)
+                dist < 50f -> Color.argb(alpha, 255,  50,  50)
+                dist < 100f-> Color.argb(alpha, 255, 200,  50)
+                else       -> Color.argb(alpha,  50, 100, 255)
             }
 
-            // Helper: project world → floatArrayOf(sx, sy), null nếu sau camera
+            // ── Posture — đọc từ action_flag thật ─────────────────
+            // poseHeightMult: 1.0=đứng, 0.65=ngồi, 0.3=nằm
+            val ph  = entity.poseHeightMult
+            // Shoulder/hand width thu hẹp khi prone
+            val shW = if (entity.isProne) 0.15f else 0.3f
+            val hdW = if (entity.isProne) 0.3f  else 0.5f
+
+            // Helper project
             fun proj(wx: Float, wy: Float, wz: Float): FloatArray? =
                 PacketProjection.project(W, H, snapshot, wx, wy, wz)?.let {
                     floatArrayOf(it[0], it[1])
                 }
 
-            // ── Project 11 điểm xương skeleton ──────────────────────────
-            // Toạ độ world: (ex, ey, ez) là chân entity, ey+N là từng khớp
-            val sHEAD    = proj(ex,        ey + 1.75f, ez)
-            val sNECK    = proj(ex,        ey + 1.55f, ez)
-            val sCHEST   = proj(ex,        ey + 1.35f, ez)
-            val sBELLY   = proj(ex,        ey + 1.00f, ez)
-            val sPELVIS  = proj(ex,        ey + 0.75f, ez)
-            val sLSHOULD = proj(ex - 0.3f, ey + 1.4f,  ez)
-            val sRSHOULD = proj(ex + 0.3f, ey + 1.4f,  ez)
-            val sLHAND   = proj(ex - 0.5f, ey + 0.9f,  ez)
-            val sRHAND   = proj(ex + 0.5f, ey + 0.9f,  ez)
-            val sLFOOT   = proj(ex - 0.2f, ey + 0.0f,  ez)
-            val sRFOOT   = proj(ex + 0.2f, ey + 0.0f,  ez)
+            // ── Project skeleton 11 điểm theo posture ─────────────
+            val sHEAD    = proj(ex,       ey + 1.75f * ph, ez)
+            val sNECK    = proj(ex,       ey + 1.55f * ph, ez)
+            val sCHEST   = proj(ex,       ey + 1.35f * ph, ez)
+            val sBELLY   = proj(ex,       ey + 1.00f * ph, ez)
+            val sPELVIS  = proj(ex,       ey + 0.75f * ph, ez)
+            val sLSHOULD = proj(ex - shW, ey + 1.40f * ph, ez)
+            val sRSHOULD = proj(ex + shW, ey + 1.40f * ph, ez)
+            val sLHAND   = proj(ex - hdW, ey + 0.90f * ph, ez)
+            val sRHAND   = proj(ex + hdW, ey + 0.90f * ph, ez)
+            val sLFOOT   = proj(ex - 0.2f, ey + 0.0f,     ez)
+            val sRFOOT   = proj(ex + 0.2f, ey + 0.0f,     ez)
 
-            // Nếu không project được đầu → vẽ chấm rìa thay thế
             if (sHEAD == null) {
                 drawEdge(canvas, snapshot, entity, dist, W, H)
                 continue
@@ -135,115 +139,194 @@ class EspHudView(context: Context) : View(context) {
             val headScrY = sHEAD[1]
             seen += entity.id
 
-            // Smooth frames cache (dùng head + foot)
             val footScrX = sLFOOT?.get(0) ?: (sRFOOT?.get(0) ?: headScrX)
             val footScrY = sLFOOT?.get(1) ?: (sRFOOT?.get(1) ?: headScrY + 80f)
             smoothFrames[entity.id] = floatArrayOf(footScrX, footScrY, headScrX, headScrY)
 
-            // ── Setup Paint cho skeleton ───────────────────────────────
+            // ── Setup Paint skeleton ───────────────────────────────
             paint.style       = Paint.Style.STROKE
             paint.strokeWidth = dp(2f)
             paint.color       = skelColor
             paint.strokeCap   = Paint.Cap.ROUND
             paint.strokeJoin  = Paint.Join.ROUND
 
-            // Helper vẽ đoạn xương A → B
             fun bone(a: FloatArray?, b: FloatArray?) {
                 if (a == null || b == null) return
                 canvas.drawLine(a[0], a[1], b[0], b[1], paint)
             }
 
-            // ══ VẼ SKELETON ══════════════════════════════════════════
-            // Cột sống: HEAD → NECK → CHEST → BELLY → PELVIS
-            bone(sHEAD,   sNECK)
-            bone(sNECK,   sCHEST)
-            bone(sCHEST,  sBELLY)
-            bone(sBELLY,  sPELVIS)
+            // ══ SKELETON ═══════════════════════════════════════════
+            bone(sHEAD,    sNECK)
+            bone(sNECK,    sCHEST)
+            bone(sCHEST,   sBELLY)
+            bone(sBELLY,   sPELVIS)
+            bone(sCHEST,   sLSHOULD); bone(sLSHOULD, sLHAND)
+            bone(sCHEST,   sRSHOULD); bone(sRSHOULD, sRHAND)
+            bone(sPELVIS,  sLFOOT)
+            bone(sPELVIS,  sRFOOT)
 
-            // Tay trái: CHEST → L_SHOULD → L_HAND
-            bone(sCHEST,  sLSHOULD)
-            bone(sLSHOULD, sLHAND)
-
-            // Tay phải: CHEST → R_SHOULD → R_HAND
-            bone(sCHEST,  sRSHOULD)
-            bone(sRSHOULD, sRHAND)
-
-            // Chân trái: PELVIS → L_FOOT
-            bone(sPELVIS, sLFOOT)
-
-            // Chân phải: PELVIS → R_FOOT
-            bone(sPELVIS, sRFOOT)
-
-            // Vòng tròn đầu (skull)
-            if (sHEAD != null && sNECK != null) {
-                val headRadius = kotlin.math.hypot(sHEAD[0] - sNECK[0], sHEAD[1] - sNECK[1]) * 0.5f
-                if (headRadius in 1f..60f) {
+            // Vòng đầu
+            if (sNECK != null) {
+                val headR = kotlin.math.hypot(headScrX - sNECK[0], headScrY - sNECK[1]) * 0.5f
+                if (headR in 1f..60f) {
                     paint.style = Paint.Style.STROKE
                     paint.strokeWidth = dp(1.5f)
-                    canvas.drawCircle(sHEAD[0], sHEAD[1], headRadius.coerceIn(3f, 24f), paint)
+                    canvas.drawCircle(headScrX, headScrY, headR.coerceIn(3f, 24f), paint)
                 }
             }
 
-            // ══ HP BAR (bên trái skeleton, dọc từ head→foot) ════════
-            if (sHEAD != null && sLFOOT != null) {
-                val barLeft  = minOf(sHEAD[0], sLFOOT[0]) - dp(8f)
-                val barRight = barLeft + dp(3f)
-                val barTop   = sHEAD[1]
-                val barBot   = sLFOOT[1]
-                if (barBot > barTop + 2f) {
-                    val hpRatio = entity.hpRatio
+            // ══ HP BAR (bên trái, dọc) ═════════════════════════════
+            val footRef = sLFOOT ?: sRFOOT
+            if (footRef != null) {
+                val barL  = minOf(headScrX, footRef[0]) - dp(8f)
+                val barR  = barL + dp(3f)
+                val barT  = headScrY
+                val barB  = footRef[1]
+                if (barB > barT + 2f) {
+                    val hp = entity.hpRatio
                     paint.style = Paint.Style.FILL
                     paint.color = Color.argb(160, 18, 18, 24)
-                    canvas.drawRoundRect(RectF(barLeft, barTop, barRight, barBot), dp(2f), dp(2f), paint)
+                    canvas.drawRoundRect(RectF(barL, barT, barR, barB), dp(2f), dp(2f), paint)
                     paint.color = when {
-                        hpRatio > 0.6f -> Color.rgb(60, 220, 120)   // Xanh lá
-                        hpRatio > 0.3f -> Color.rgb(255, 200, 40)   // Vàng
-                        else           -> Color.rgb(255, 70,  70)   // Đỏ
+                        hp > 0.6f -> Color.rgb(60, 220, 120)
+                        hp > 0.3f -> Color.rgb(255, 200, 40)
+                        else      -> Color.rgb(255, 70, 70)
                     }
-                    val hpFillTop = barBot - hpRatio * (barBot - barTop)
-                    canvas.drawRoundRect(RectF(barLeft, hpFillTop, barRight, barBot), dp(2f), dp(2f), paint)
+                    val fillT = barB - hp * (barB - barT)
+                    canvas.drawRoundRect(RectF(barL, fillT, barR, barB), dp(2f), dp(2f), paint)
                 }
             }
 
-            // ══ TÊN ĐỊCH (phía trên đầu skeleton) ══════════════════
-            val nameScrX = sHEAD?.get(0) ?: headScrX
-            val nameScrY = (sHEAD?.get(1) ?: headScrY) - dp(16f)
-
-            val displayName = entity.name.ifBlank { "?${entity.id}" }.let {
-                if (it.length > 14) it.take(12) + "…" else it
-            }
-            text.typeface  = android.graphics.Typeface.DEFAULT_BOLD
-            text.textSize  = dp(9f)
-            text.textAlign = Paint.Align.CENTER
-            text.setShadowLayer(dp(2f), 0f, dp(1f), Color.BLACK)
-            text.color     = skelColor
-            canvas.drawText(displayName, nameScrX, nameScrY, text)
-
-            // ══ KHOẢNG CÁCH + WEAPON (phía trên tên) ═══════════════
-            text.typeface  = android.graphics.Typeface.DEFAULT
-            text.textSize  = dp(8f)
-            text.setShadowLayer(dp(1.5f), 0f, dp(0.8f), Color.BLACK)
-            text.color     = Color.argb(lineAlpha, 200, 200, 200)
-            val wLabel     = entity.weaponLabel
-            val infoLabel  = if (wLabel.isNotEmpty()) "${dist.toInt()}m · $wLabel" else "${dist.toInt()}m"
-            canvas.drawText(infoLabel, nameScrX, nameScrY - dp(10f), text)
-            text.clearShadowLayer()
-
-            // ══ KNOCKED BADGE ════════════════════════════════════════
-            if (isKnocked) {
-                val footScrYn = sLFOOT?.get(1) ?: (headScrY + 80f)
-                text.typeface  = android.graphics.Typeface.DEFAULT_BOLD
-                text.textSize  = dp(7.5f)
-                text.textAlign = Paint.Align.CENTER
-                text.setShadowLayer(dp(2f), 0f, dp(1f), Color.BLACK)
-                text.color     = Color.argb(220, 255, 165, 0)
-                canvas.drawText("KNOCKED", nameScrX, footScrYn + dp(12f), text)
-                text.clearShadowLayer()
-            }
+            // ══ NAMEPLATE NGANG (phía trên đầu) ════════════════════
+            drawNameplate(canvas, entity, headScrX, headScrY - dp(4f), dist, skelColor, isTeammate)
         }
 
         poseFrames.keys.retainAll(seen)
         smoothFrames.keys.retainAll(seen)
+    }
+
+    // ─── Nameplate: thanh ngang [WEAPON] NAME STATE_BADGE ────────
+
+    private fun drawNameplate(
+        canvas: Canvas,
+        entity: EspEntityStore.Entity,
+        cx: Float,
+        headTop: Float,
+        dist: Float,
+        skelColor: Int,
+        isTeammate: Boolean,
+    ) {
+        val displayName = entity.name.ifBlank { "?${entity.id}" }.let {
+            if (it.length > 14) it.take(12) + "…" else it
+        }
+
+        // Chọn background màu theo team (giống ảnh tham khảo)
+        // Teammate = xanh đậm, địch = đỏ đậm
+        val bgColor = if (isTeammate)
+            Color.argb(210,  20,  60, 160)   // Xanh đậm
+        else
+            Color.argb(210, 160,  20,  20)   // Đỏ đậm
+
+        val accentColor = if (isTeammate)
+            Color.argb(255,  60, 160, 255)   // Accent xanh
+        else
+            Color.argb(255, 255,  60,  60)   // Accent đỏ
+
+        // ── State badge text + màu ─────────────────────────────
+        val stateTxt = entity.stateLabel
+        val stateColor = when {
+            entity.knocked    -> Color.rgb(255, 165, 0)    // Cam = knocked
+            entity.isFiring   -> Color.rgb(255,  60, 60)   // Đỏ = bắn
+            entity.isAiming   -> Color.rgb(255, 215, 0)    // Vàng = ngắm
+            entity.isProne    -> Color.rgb(0,   210, 210)  // Cyan = nằm
+            entity.isCrouching-> Color.rgb(0,   210, 210)  // Cyan = ngồi
+            entity.isSprinting-> Color.rgb(160, 160, 160)  // Xám = chạy
+            else              -> 0
+        }
+
+        // ── Measure text ───────────────────────────────────────
+        text.typeface  = android.graphics.Typeface.DEFAULT_BOLD
+        text.textSize  = dp(9f)
+        text.textAlign = Paint.Align.LEFT
+
+        val nameW   = text.measureText(displayName)
+        val wLabel  = entity.weaponLabel
+        val wW      = if (wLabel.isNotEmpty()) text.measureText(wLabel) + dp(4f) else 0f
+        val stateW  = if (stateTxt.isNotEmpty()) text.measureText(stateTxt) + dp(10f) else 0f
+
+        val padH    = dp(3f)
+        val padV    = dp(2.5f)
+        val barH    = dp(14f)   // Chiều cao thanh nameplate
+        val barW    = wW + dp(6f) + nameW + (if (stateW > 0) stateW + dp(4f) else 0f) + dp(8f)
+        val accentW = dp(4f)    // Viền màu trái
+
+        val barL = cx - barW * 0.5f
+        val barR = barL + barW
+        val barT = headTop - barH - padV
+        val barB = headTop - padV
+
+        // ── Vẽ background thanh ────────────────────────────────
+        paint.style = Paint.Style.FILL
+        paint.color = bgColor
+        canvas.drawRoundRect(RectF(barL, barT, barR, barB), dp(3f), dp(3f), paint)
+
+        // ── Accent strip trái ──────────────────────────────────
+        paint.color = accentColor
+        canvas.drawRoundRect(RectF(barL, barT, barL + accentW, barB), dp(2f), dp(2f), paint)
+
+        // ── Vẽ nội dung từ trái sang phải ────────────────────
+        var curX = barL + accentW + dp(5f)
+        val textY = barT + barH * 0.65f   // Baseline nằm 65% chiều cao bar
+
+        // Icon vũ khí (text viết tắt)
+        if (wLabel.isNotEmpty()) {
+            text.textSize  = dp(7.5f)
+            text.color     = Color.argb(220, 220, 220, 220)
+            text.textAlign = Paint.Align.LEFT
+            canvas.drawText(wLabel, curX, textY, text)
+            curX += text.measureText(wLabel) + dp(5f)
+        }
+
+        // Tên nhân vật
+        text.textSize  = dp(9f)
+        text.typeface  = android.graphics.Typeface.DEFAULT_BOLD
+        text.color     = Color.WHITE
+        text.textAlign = Paint.Align.LEFT
+        canvas.drawText(displayName, curX, textY, text)
+        curX += text.measureText(displayName) + dp(4f)
+
+        // State badge (nền riêng + text)
+        if (stateTxt.isNotEmpty() && stateColor != 0) {
+            val badgeW  = text.measureText(stateTxt) + dp(8f)
+            val badgeL  = curX
+            val badgeR  = badgeL + badgeW
+            val badgeT  = barT + dp(2f)
+            val badgeB  = barB - dp(2f)
+
+            // Nền badge
+            paint.style = Paint.Style.FILL
+            paint.color = Color.argb(180,
+                Color.red(stateColor),
+                Color.green(stateColor),
+                Color.blue(stateColor))
+            canvas.drawRoundRect(RectF(badgeL, badgeT, badgeR, badgeB), dp(2f), dp(2f), paint)
+
+            // Text badge
+            text.textSize  = dp(7f)
+            text.typeface  = android.graphics.Typeface.DEFAULT_BOLD
+            text.color     = Color.WHITE
+            text.textAlign = Paint.Align.CENTER
+            canvas.drawText(stateTxt, badgeL + badgeW * 0.5f, textY, text)
+        }
+
+        // ── Khoảng cách phía trên thanh ───────────────────────
+        text.typeface  = android.graphics.Typeface.DEFAULT
+        text.textSize  = dp(7.5f)
+        text.textAlign = Paint.Align.CENTER
+        text.setShadowLayer(dp(1.5f), 0f, dp(1f), Color.BLACK)
+        text.color     = Color.argb(200, 200, 200, 200)
+        canvas.drawText("${dist.toInt()}m", cx, barT - dp(2f), text)
+        text.clearShadowLayer()
     }
 
     // ─── drawEdge: chấm rìa màn hình với màu team ────────────────

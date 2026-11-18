@@ -38,28 +38,59 @@ object EspEntityStore {
         val knocked:     Boolean = false,   // bị gục (knocked down, chưa chết hẳn)
         val weaponType:  Int     = 0,       // 0=unknown,1=AR,2=SMG,3=Sniper,4=SG,5=Pistol,6=Melee,7=Launcher,8=Grenade
         val factionId:   Int     = -1,      // factionId từ game (-1 = chưa biết)
+        // ── State từ action_flag packet (S2C_UDP_Optimize_PlayerState_Res) ──
+        // Bit flags: 0=fire, 1=aim/scope, 2=crouch, 3=prone, 4=sprint, 5=moving
+        val actionFlag:  Int     = 0,
+        val moveSpeed:   Float   = 0f,      // velocity magnitude từ packet
     ) {
+        // ── Action flag helpers ──────────────────────────────────
+        val isFiring:   Boolean get() = (actionFlag and 0x01) != 0
+        val isAiming:   Boolean get() = (actionFlag and 0x02) != 0
+        val isCrouching:Boolean get() = (actionFlag and 0x04) != 0
+        val isProne:    Boolean get() = (actionFlag and 0x08) != 0
+        val isSprinting:Boolean get() = (actionFlag and 0x10) != 0
+        val isMoving:   Boolean get() = (actionFlag and 0x20) != 0 || moveSpeed > 0.5f
+
+        /** State text ngắn để hiện trên ESP */
+        val stateLabel: String get() = when {
+            knocked     -> "KNOCKED"
+            isProne     -> "PRONE"
+            isCrouching -> "CROUCH"
+            isFiring && isAiming -> "SNIPE"
+            isFiring    -> "FIRE"
+            isAiming    -> "AIM"
+            isSprinting -> "SPRINT"
+            isMoving    -> "MOVE"
+            else        -> ""
+        }
+
         // Tinh velocity tu diff position / diff time
         fun withPosition(nx: Float, ny: Float, nz: Float, ts: Long): Entity {
             val dt = maxOf(0.001f, (ts - updatedAt) / 1000f)
+            val dvx = (nx - x) / dt
+            val dvz = (nz - z) / dt
+            val spd = kotlin.math.sqrt(dvx * dvx + dvz * dvz)
             return copy(
                 x = nx, y = ny, z = nz,
-                vx = (nx - x) / dt,
+                vx = dvx,
                 vy = (ny - y) / dt,
-                vz = (nz - z) / dt,
+                vz = dvz,
                 updatedAt = ts,
+                // speed từ position diff nếu chưa có từ packet
+                moveSpeed = if (moveSpeed == 0f && spd < 50f) spd else moveSpeed,
                 // Neu truoc do dead → reset HP (respawn)
                 health = if (dead) 200 else health,
                 dead   = false,
                 knocked = false,
             )
         }
-        fun withTeam(t: Int)        = copy(team = t)
-        fun withName(n: String)     = copy(name = n)
-        fun withFaction(f: Int)     = copy(factionId = f)
-        fun withWeapon(wt: Int)     = copy(weaponType = wt)
-        fun withMaxHp(mhp: Int)     = copy(maxHealth = mhp.coerceIn(1, 500))
-        fun withKnocked(k: Boolean) = copy(knocked = k, dead = false)
+        fun withTeam(t: Int)             = copy(team = t)
+        fun withName(n: String)          = copy(name = n)
+        fun withFaction(f: Int)          = copy(factionId = f)
+        fun withWeapon(wt: Int)          = copy(weaponType = wt)
+        fun withMaxHp(mhp: Int)          = copy(maxHealth = mhp.coerceIn(1, 500))
+        fun withKnocked(k: Boolean)      = copy(knocked = k, dead = false)
+        fun withActionFlag(flag: Int, spd: Float = moveSpeed) = copy(actionFlag = flag, moveSpeed = spd)
         fun withDamage(dmg: Int): Entity {
             val hp = maxOf(0, health - dmg)
             val nowKnocked = hp <= 0 && !dead
@@ -74,6 +105,13 @@ object EspEntityStore {
             1 -> "AR"; 2 -> "SMG"; 3 -> "SR"; 4 -> "SG"
             5 -> "P"; 6 -> "M"; 7 -> "GL"; 8 -> "GR"
             else -> ""
+        }
+
+        /** Height offset thật dựa trên posture (ảnh hưởng đến vị trí skeleton) */
+        val poseHeightMult: Float get() = when {
+            isProne     -> 0.3f   // Nằm: chiều cao ~30% standing
+            isCrouching -> 0.65f  // Ngồi: chiều cao ~65% standing
+            else        -> 1.0f   // Đứng/chạy: 100%
         }
     }
 
@@ -140,14 +178,17 @@ object EspEntityStore {
         direction = Direction(sin(yaw).toFloat(), 0f, cos(yaw).toFloat(), yaw)
     }
 
-    fun updateTeam   (id: Int, team: Int)    { entities.computeIfPresent(id) { _, e -> e.withTeam(team) } }
-    fun updateName   (id: Int, name: String) { entities.computeIfPresent(id) { _, e -> e.withName(name) } }
-    fun updateFaction(id: Int, fac: Int)     { entities.computeIfPresent(id) { _, e -> e.withFaction(fac) } }
-    fun updateWeapon (id: Int, wt: Int)      { entities.computeIfPresent(id) { _, e -> e.withWeapon(wt) } }
-    fun updateMaxHp  (id: Int, mhp: Int)     { entities.computeIfPresent(id) { _, e -> e.withMaxHp(mhp) } }
-    fun setKnocked   (id: Int, k: Boolean)   { entities.computeIfPresent(id) { _, e -> e.withKnocked(k) } }
-    fun applyDamage  (id: Int, damage: Int)  { entities.computeIfPresent(id) { _, e -> e.withDamage(damage) } }
-    fun localEntityId(): Int                 = localPlayer?.id ?: -1
+    fun updateTeam      (id: Int, team: Int)    { entities.computeIfPresent(id) { _, e -> e.withTeam(team) } }
+    fun updateName      (id: Int, name: String) { entities.computeIfPresent(id) { _, e -> e.withName(name) } }
+    fun updateFaction   (id: Int, fac: Int)     { entities.computeIfPresent(id) { _, e -> e.withFaction(fac) } }
+    fun updateWeapon    (id: Int, wt: Int)      { entities.computeIfPresent(id) { _, e -> e.withWeapon(wt) } }
+    fun updateMaxHp     (id: Int, mhp: Int)     { entities.computeIfPresent(id) { _, e -> e.withMaxHp(mhp) } }
+    fun setKnocked      (id: Int, k: Boolean)   { entities.computeIfPresent(id) { _, e -> e.withKnocked(k) } }
+    fun applyDamage     (id: Int, damage: Int)  { entities.computeIfPresent(id) { _, e -> e.withDamage(damage) } }
+    fun updateActionFlag(id: Int, flag: Int, speed: Float = 0f) {
+        entities.computeIfPresent(id) { _, e -> e.withActionFlag(flag, speed) }
+    }
+    fun localEntityId(): Int                    = localPlayer?.id ?: -1
 
     // ─── Snapshot cho rendering ───────────────────────────────
     // Copy y chang tu FULL_LOGIC: loc dead entities, 15s TTL

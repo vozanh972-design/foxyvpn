@@ -99,21 +99,24 @@ object AimCombatEngine {
         // Guard 2: chỉ hoạt động khi INGAME (phase detector)
         if (!GamePhaseDetector.isIngame()) return null
 
-        // Guard 3: đang bắn — CMD 104 observe (FreezeController) HOẶC magnet
-        val isFiring = FreezeController.isFiring() || NetworkFeatures.magnetActive()
-        if (!isFiring) return null
-
-        // Guard 4: xác định headerSize từ data[0] thật
+        // Guard 3: xác định headerSize từ data[0] thật
         // Logic từ UdpSessionParser + Pigboy original:
         //   data[0] < 100 → headerSize = 10 (long header)
         //   data[0] >= 100 → headerSize = 8 (short header)
         val firstByte = data[0].toInt() and 0xFF
+        // Nếu data[0] không trong range packet hợp lệ → skip
+        if (firstByte < 90 || firstByte >= 110) return null
         val headerSize = if (firstByte < 100) FoxyPacketConstants.HEADER_SIZE_LONG
                          else                 FoxyPacketConstants.HEADER_SIZE_SHORT
 
-        // Guard 5: offset bone phải nằm trong bounds của packet
+        // Guard 4: offset bone phải nằm trong bounds của packet
         val boneOffset = headerSize + BONE_OFFSET_IN_PAYLOAD
         if (boneOffset >= data.size) return null
+
+        // Guard 5: chỉ rewrite khi đang bắn (CMD 104 đã được observe bởi GameProtocolEngine)
+        // FreezeController.isFiring() = true khi CMD 104 đã thấy và trong 700ms gần đây
+        // KHÔNG dùng NetworkFeatures.magnetActive() vì chế độ Ghim không set options.magnet
+        if (!FreezeController.isFiring()) return null
 
         // Rewrite bone field → targetBone (HitPart enum value thật)
         // Chỉ rewrite nếu giá trị hiện tại khác (tránh rewrite không cần thiết)

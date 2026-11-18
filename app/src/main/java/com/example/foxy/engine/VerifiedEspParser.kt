@@ -30,6 +30,7 @@ object VerifiedEspParser {
             if (parseWeaponFrame(data))     hits++   // detect weapon type từ entity state packet
             if (parseKnockedFrame(data))    hits++   // detect knocked state
             if (parseVisibilityFrame(data)) hits++   // parse tên thật từ S2C_RUDP_SyncPlayersVisibility_Res
+            if (parseStateFrame(data))      hits++   // parse action_flag (fire/aim/crouch/prone/sprint)
         }
         return hits
     }
@@ -378,5 +379,51 @@ object VerifiedEspParser {
         }
         val printableRatio = printableCount.toFloat() / name.length
         return printableRatio >= 0.8f && alphanumCount >= 1
+    }
+
+    // ─── STATE FRAME ──────────────────────────────────────────────
+    // Parse S2C_UDP_Optimize_PlayerState_Res / S2C_UDP_PlayerState_Res
+    // Packet này gửi LIÊN TỤC ~20Hz chứa action_flag, velocity, state của từng entity
+    //
+    // Confirmed fields từ global-metadata.dat research:
+    //   entity_id (varint 1-127)
+    //   state/flags (varint = action_flag bitmask)
+    //   velocity / velocityDirection / velocityAngle
+    //   action_flag: bit0=fire, bit1=aim, bit2=crouch, bit3=prone, bit4=sprint, bit5=moving
+    //
+    // Packet đặc điểm:
+    //   - Size nhỏ: 10–35 bytes (state chỉ cần vài varint)
+    //   - Tần suất cao: nhiều packet/giây
+    //   - Luôn có entity_id hợp lệ (1-127) + ít nhất 1 state varint
+    //   - action_flag là bitmask 6 bit (0–63)
+    private fun parseStateFrame(data: ByteArray): Boolean {
+        if (data.size < 10 || data.size > 50) return false
+
+        val cur = intArrayOf(8)
+        val end = data.size
+
+        // Field 1: entity_id (varint 1-127)
+        val entityId = readVarint(data, cur, end).toInt()
+        if (entityId < 1 || entityId > 127) return false
+
+        // Field 2: action_flag (varint 0-63, bitmask của trạng thái)
+        val actionFlag = readVarint(data, cur, end)
+        if (actionFlag < 0 || actionFlag > 127) return false  // 7 bits đủ
+
+        // Field 3 (optional): velocity magnitude (varint, đơn vị cm/s x100)
+        var speed = 0f
+        if (cur[0] < end) {
+            val velocityRaw = readVarint(data, cur, end)
+            if (velocityRaw in 0L..50000L) {
+                speed = velocityRaw / 100f   // cm/s → m/s
+            }
+        }
+
+        // Chỉ update nếu entity đã có trong store (tránh false positive tạo entity giả)
+        // action_flag != 0 hoặc speed > 0 → chắc chắn là packet state thật
+        if (actionFlag == 0L && speed == 0f) return false
+
+        EspEntityStore.updateActionFlag(entityId, actionFlag.toInt(), speed)
+        return true
     }
 }
