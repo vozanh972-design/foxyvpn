@@ -290,15 +290,20 @@ class EspHudView(context: Context) : View(context) {
             else               -> 0
         }
 
-        // ── Weapon info (icon + label text) ───────────────────
-        val wIcon  = entity.weaponIcon   // emoji icon (có thể "")
-        val wLabel = entity.weaponLabel  // AR/SMG/SR text (có thể "")
-        // Nấm đấm = weaponType==6, không cầm gì = weaponType==0
-        // Nếu weapon==0: hiện "—" (không cầm gì)
-        val wDisplay = when {
-            wIcon.isNotEmpty()  -> "$wIcon $wLabel"
-            wLabel.isNotEmpty() -> wLabel
-            else                -> ""  // ẩn weapon section
+        // ── Weapon: icon bitmap thật (nếu có) hoặc fallback text ──
+        val wLabel   = entity.weaponLabel   // AR/SMG/SR...
+        val iconSize = dp(WeaponIconCache.ICON_SIZE_DP).toInt().coerceAtLeast(8)
+        val wBitmap  = WeaponIconCache.getScaled(entity.weaponType, iconSize)
+
+        // Measure weapon section width
+        val wW: Float = when {
+            wBitmap != null -> iconSize.toFloat() + dp(3f) + run {
+                text.textSize = dp(7f); text.measureText(wLabel)
+            } + dp(5f)
+            wLabel.isNotEmpty() -> run {
+                text.textSize = dp(7.5f); text.measureText(wLabel)
+            } + dp(8f)
+            else -> 0f
         }
 
         // ── Measure text ───────────────────────────────────────
@@ -306,20 +311,16 @@ class EspHudView(context: Context) : View(context) {
         text.textSize  = dp(9f)
         text.textAlign = Paint.Align.LEFT
 
-        val nameW  = text.measureText(displayName)
-        text.textSize = dp(7.5f)
-        val wW     = if (wDisplay.isNotEmpty()) text.measureText(wDisplay) + dp(4f) else 0f
-        // Khoảng cách: hiện nhỏ trong nameplate (thay vì phía trên)
+        val nameW   = text.measureText(displayName)
         text.textSize = dp(7f)
         val distTxt = "${dist.toInt()}m"
         val distW   = text.measureText(distTxt) + dp(6f)
-        text.textSize = dp(7f)
-        val stateW = if (stateTxt.isNotEmpty()) text.measureText(stateTxt) + dp(10f) else 0f
+        val stateW  = if (stateTxt.isNotEmpty()) text.measureText(stateTxt) + dp(10f) else 0f
         text.textSize = dp(9f)
 
-        val barH   = dp(15f)
-        val barW   = dp(6f) + wW + nameW + dp(4f) + distW + (if (stateW > 0f) stateW + dp(4f) else 0f) + dp(6f)
-        val barW2  = barW.coerceAtLeast(dp(60f))
+        val barH    = dp(15f)
+        val barW    = dp(6f) + wW + nameW + dp(4f) + distW + (if (stateW > 0f) stateW + dp(4f) else 0f) + dp(6f)
+        val barW2   = barW.coerceAtLeast(dp(60f))
         val accentW = dp(4f)
 
         val barL = cx - barW2 * 0.5f
@@ -340,14 +341,28 @@ class EspHudView(context: Context) : View(context) {
         // ── Nội dung từ trái sang phải ─────────────────────────
         var curX = barL + accentW + dp(5f)
 
-        // Icon + Label vũ khí (icon emoji)
-        if (wDisplay.isNotEmpty()) {
+        // Weapon icon bitmap thật (từ FF game assets) + text label
+        if (wBitmap != null) {
+            // Vẽ bitmap icon căn giữa dọc trong thanh
+            val iconTop = barT + (barH - iconSize) * 0.5f
+            canvas.drawBitmap(wBitmap, curX, iconTop, paint)
+            curX += iconSize + dp(3f)
+            if (wLabel.isNotEmpty()) {
+                text.textSize  = dp(7f)
+                text.typeface  = android.graphics.Typeface.DEFAULT
+                text.color     = Color.argb(220, 150, 220, 255)
+                text.textAlign = Paint.Align.LEFT
+                canvas.drawText(wLabel, curX, textY, text)
+                curX += text.measureText(wLabel) + dp(5f)
+            }
+        } else if (wLabel.isNotEmpty()) {
+            // Fallback: chỉ text label khi chưa có icon
             text.textSize  = dp(7.5f)
             text.typeface  = android.graphics.Typeface.DEFAULT
-            text.color     = Color.argb(230, 150, 220, 255)
+            text.color     = Color.argb(220, 150, 220, 255)
             text.textAlign = Paint.Align.LEFT
-            canvas.drawText(wDisplay, curX, textY, text)
-            curX += text.measureText(wDisplay) + dp(5f)
+            canvas.drawText(wLabel, curX, textY, text)
+            curX += text.measureText(wLabel) + dp(5f)
         }
 
         // Tên nhân vật (trắng, đậm)
