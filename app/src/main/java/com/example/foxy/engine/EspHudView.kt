@@ -97,12 +97,15 @@ class EspHudView(context: Context) : View(context) {
             val isKnocked  = entity.knocked
             val alpha = boxAlpha
 
+            // Xa = trắng, gần = đỏ | knocked = cam | teammate = xanh
             val skelColor = when {
-                isKnocked  -> Color.argb(alpha, 255, 165,   0)
-                isTeammate -> Color.argb(alpha,  80, 200, 255)
-                dist < 50f -> Color.argb(alpha, 255,  50,  50)
-                dist < 100f-> Color.argb(alpha, 255, 200,  50)
-                else       -> Color.argb(alpha,  50, 100, 255)
+                isKnocked  -> Color.argb(alpha, 255, 165,   0)   // cam
+                isTeammate -> Color.argb(alpha,  80, 200, 255)   // xanh
+                dist < 30f -> Color.argb(alpha, 255,  40,  40)   // đỏ đậm
+                dist < 60f -> Color.argb(alpha, 255, 100,  60)   // đỏ cam
+                dist < 100f-> Color.argb(alpha, 255, 200, 120)   // vàng nhạt
+                dist < 150f-> Color.argb(alpha, 200, 220, 200)   // trắng xanh
+                else       -> Color.argb(alpha, 255, 255, 255)   // trắng
             }
 
             // ── Posture — đọc từ action_flag thật ─────────────────
@@ -194,7 +197,7 @@ class EspHudView(context: Context) : View(context) {
         smoothFrames.keys.retainAll(seen)
     }
 
-    // ─── drawSilhouette: Vẽ hình người filled (lớp da) xuyên tường ─────────
+    // ─── drawSilhouette: Đường chỉ skeleton (stick figure) + box ────────────
 
     private fun drawSilhouette(
         canvas: Canvas, entity: EspEntityStore.Entity,
@@ -207,81 +210,80 @@ class EspHudView(context: Context) : View(context) {
     ) {
         if (sHEAD == null) return
 
-        val fillColor = Color.argb(
-            (alpha * 0.60f).toInt(),
-            Color.red(skelColor), Color.green(skelColor), Color.blue(skelColor)
-        )
-        val strokeColor = Color.argb(
-            (alpha * 0.90f).toInt(),
-            Color.red(skelColor), Color.green(skelColor), Color.blue(skelColor)
-        )
+        // ── Setup paint đường chỉ ───────────────────────────────────────
+        paint.style     = Paint.Style.STROKE
+        paint.strokeCap = Paint.Cap.ROUND
+        paint.strokeWidth = dp(1.6f)
+        paint.color     = skelColor
 
-        // ── HEAD circle ───────────────────────────────────────────────
-        val headRadius = if (sNECK != null)
-            kotlin.math.hypot((sHEAD[0]-sNECK[0]).toDouble(), (sHEAD[1]-sNECK[1]).toDouble())
-                .toFloat().coerceIn(4f, 22f)
-        else dp(8f)
-
-        paint.style = Paint.Style.FILL
-        paint.color = fillColor
-        canvas.drawCircle(sHEAD[0], sHEAD[1], headRadius, paint)
-        paint.style = Paint.Style.STROKE
-        paint.strokeWidth = dp(1.2f)
-        paint.color = strokeColor
-        canvas.drawCircle(sHEAD[0], sHEAD[1], headRadius, paint)
-
-        // ── TORSO trapezoid (shoulders → pelvis) ─────────────────────
-        if (sLSHOULD != null && sRSHOULD != null && sPELVIS != null) {
-            val hipW = dp(4f)
-            val path = Path()
-            path.moveTo(sLSHOULD[0], sLSHOULD[1])
-            path.lineTo(sRSHOULD[0], sRSHOULD[1])
-            path.lineTo(sPELVIS[0] + hipW, sPELVIS[1])
-            path.lineTo(sPELVIS[0] - hipW, sPELVIS[1])
-            path.close()
-            paint.style = Paint.Style.FILL
-            paint.color = fillColor
-            canvas.drawPath(path, paint)
-            paint.style = Paint.Style.STROKE
-            paint.strokeWidth = dp(1f)
-            paint.color = strokeColor
-            canvas.drawPath(path, paint)
+        // Helper vẽ đoạn thẳng (bỏ qua nếu 1 trong 2 null)
+        fun line(a: FloatArray?, b: FloatArray?) {
+            if (a == null || b == null) return
+            canvas.drawLine(a[0], a[1], b[0], b[1], paint)
         }
 
-        // ── ARMS: capsule line (thick stroke) ────────────────────────
-        paint.style = Paint.Style.STROKE
-        paint.strokeCap = Paint.Cap.ROUND
-        paint.strokeWidth = dp(5f)
-        paint.color = fillColor
-        if (sLSHOULD != null && sLHAND != null)
-            canvas.drawLine(sLSHOULD[0], sLSHOULD[1], sLHAND[0], sLHAND[1], paint)
-        if (sRSHOULD != null && sRHAND != null)
-            canvas.drawLine(sRSHOULD[0], sRSHOULD[1], sRHAND[0], sRHAND[1], paint)
-        // Arm outline
-        paint.strokeWidth = dp(5f)
-        paint.color = strokeColor
-        paint.style = Paint.Style.STROKE
-        // (outline will be visually part of fill stroke — no extra call needed)
+        // ── HEAD circle (nhỏ gọn) ─────────────────────────────────────
+        val headRadius = if (sNECK != null)
+            kotlin.math.hypot(
+                (sHEAD[0] - sNECK[0]).toDouble(),
+                (sHEAD[1] - sNECK[1]).toDouble()
+            ).toFloat().coerceIn(3f, 16f)
+        else dp(6f)
 
-        // ── LEGS: thick stroke ────────────────────────────────────────
         paint.style = Paint.Style.STROKE
-        paint.strokeCap = Paint.Cap.ROUND
-        paint.strokeWidth = dp(6f)
-        paint.color = fillColor
-        if (sPELVIS != null && sLFOOT != null)
-            canvas.drawLine(sPELVIS[0], sPELVIS[1], sLFOOT[0], sLFOOT[1], paint)
-        if (sPELVIS != null && sRFOOT != null)
-            canvas.drawLine(sPELVIS[0], sPELVIS[1], sRFOOT[0], sRFOOT[1], paint)
+        paint.strokeWidth = dp(1.4f)
+        canvas.drawCircle(sHEAD[0], sHEAD[1], headRadius, paint)
 
-        // ── Leg outline (mỏng hơn, màu stroke) ──────────────────────
-        paint.strokeWidth = dp(1.5f)
-        paint.color = strokeColor
-        if (sPELVIS != null && sLFOOT != null)
-            canvas.drawLine(sPELVIS[0], sPELVIS[1], sLFOOT[0], sLFOOT[1], paint)
-        if (sPELVIS != null && sRFOOT != null)
-            canvas.drawLine(sPELVIS[0], sPELVIS[1], sRFOOT[0], sRFOOT[1], paint)
+        // Reset cho lines
+        paint.strokeWidth = dp(1.6f)
 
-        // Reset cap
+        // ── SPINE: đầu → cổ → ngực → bụng → hông ─────────────────────
+        line(sHEAD,   sNECK)
+        line(sNECK,   sCHEST)
+        line(sCHEST,  sBELLY)
+        line(sBELLY,  sPELVIS)
+
+        // ── SHOULDERS ngang ──────────────────────────────────────────
+        line(sLSHOULD, sRSHOULD)
+
+        // ── ARMS: vai → tay ──────────────────────────────────────────
+        line(sNECK,    sLSHOULD)
+        line(sNECK,    sRSHOULD)
+        line(sLSHOULD, sLHAND)
+        line(sRSHOULD, sRHAND)
+
+        // ── LEGS: hông → chân ────────────────────────────────────────
+        line(sPELVIS, sLFOOT)
+        line(sPELVIS, sRFOOT)
+
+        // ── BOX xung quanh entity (head top → foot bottom) ───────────
+        val footL = sLFOOT ?: sRFOOT
+        if (footL != null) {
+            // Tính bounding box từ head + foot
+            val hx = sHEAD[0]; val hy = sHEAD[1]
+            val fy = footL[1]
+            val boxH = kotlin.math.abs(fy - hy)
+            val boxW = boxH * 0.46f   // tỷ lệ gốc 0.46*height
+
+            val left  = hx - boxW * 0.5f
+            val right = hx + boxW * 0.5f
+            val top   = hy - headRadius          // trên đỉnh đầu
+            val bot   = fy
+
+            // Box outline
+            paint.style = Paint.Style.STROKE
+            paint.strokeWidth = dp(1.2f)
+            paint.color = Color.argb(
+                (alpha * 0.75f).toInt(),
+                Color.red(skelColor), Color.green(skelColor), Color.blue(skelColor)
+            )
+            canvas.drawRoundRect(
+                RectF(left, top, right, bot),
+                dp(3f), dp(3f), paint
+            )
+        }
+
+        // Reset
         paint.strokeCap = Paint.Cap.BUTT
     }
 
