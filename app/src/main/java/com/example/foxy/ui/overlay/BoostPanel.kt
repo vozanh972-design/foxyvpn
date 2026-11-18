@@ -1,4 +1,4 @@
-package com.example.foxy.ui.overlay
+﻿package com.example.foxy.ui.overlay
 
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -56,7 +56,7 @@ enum class AimTarget(val label: String, val yFraction: Float, val boneId: Int) {
     Head("Đầu", 0.08f, AimCombatEngine.HITPART_HEAD),
     Neck("Cổ", 0.17f, AimCombatEngine.HITPART_NECK),
     Body("Thân", 0.35f, AimCombatEngine.HITPART_CHEST),
-    Foot("Chân", 0.70f, AimCombatEngine.HITPART_LEFT_FOOT),
+    Foot("Chân", 0.70f, AimCombatEngine.HITPART_FOOT),
 }
 
 data class BoostState(
