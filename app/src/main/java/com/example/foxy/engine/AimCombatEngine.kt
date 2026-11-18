@@ -1,6 +1,9 @@
 package com.example.foxy.engine
 
+import android.util.Log
 import java.util.concurrent.Executors
+
+private const val TAG = "FoxyAim"
 
 /**
  * AimCombatEngine — Bone Rewrite Engine dựa trên logic thật của Free Fire.
@@ -65,6 +68,7 @@ object AimCombatEngine {
         private set
     @Volatile var targetBone: Int = HITPART_HEAD
         private set
+    @Volatile private var dbgCounter: Long = 0L
 
     // ── Configure ─────────────────────────────────────────────────────────
     /**
@@ -129,6 +133,15 @@ object AimCombatEngine {
             }
 
         val currentBone = data[boneOffset].toInt() and 0xFF
+
+        // ── Debug log: dump fire packet khi bone cần đổi ─────────────────
+        // Log mỗi 20 packet để không spam, chứa hex dump 48 bytes đầu
+        if (dbgCounter++ % 20 == 0L) {
+            val hexDump = data.take(minOf(48, data.size))
+                .joinToString(" ") { "%02X".format(it.toInt() and 0xFF) }
+            Log.d(TAG, "FirePkt[${data.size}] hdr=$headerSize boneOff=$boneOffset curBone=$currentBone tgt=$targetBone | $hexDump")
+        }
+
         if (currentBone == targetBone) return null
 
         val modified = data.clone()
