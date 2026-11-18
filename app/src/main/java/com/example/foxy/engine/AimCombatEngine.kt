@@ -7,7 +7,6 @@ import java.util.Base64
 import java.util.concurrent.Executors
 
 /**
-<<<<<<< HEAD
  * AimCombatEngine — Xử lý logic Ghim Tâm / Auto Headshot / Bone Targeting theo chuẩn ShinMod (04_aim_headshot_combat).
  *
  * Nguyên lý hoạt động từ ShinMod (libshinmod.so & libstub.so):
@@ -26,10 +25,6 @@ import java.util.concurrent.Executors
  *     HOẶC NetworkFeatures.magnetActive()
  *   - Không cần localPlayer hay địch trong range → bone rewrite áp dụng ngay
  *     khi detect firing, giống hệt cách AIMBOT HEAD hoạt động qua module 7755.
-=======
- * Dịch 1:1 từ ModuleBridge.smali.
- * Không thêm bớt logic, không chế lại.
->>>>>>> 21efc3d4548df609773273e217983335c9b984a6
  */
 object AimCombatEngine {
 
