@@ -13,6 +13,7 @@ import com.example.foxy.MainActivity
 import com.example.foxy.R
 import com.example.foxy.engine.GameProtocolEngine
 import com.example.foxy.engine.PacketTunnelEngine
+import com.example.foxy.engine.WeaponIconCache
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -57,6 +58,13 @@ class FreefireVpnService : VpnService() {
             ACTION_STOP -> { stopVpn(); START_NOT_STICKY }
             else        -> { startVpn(); START_STICKY }
         }
+    }
+
+    override fun onCreate() {
+        super.onCreate()
+        // Load weapon icons từ assets vào cache (chỉ chạy 1 lần)
+        WeaponIconCache.init(applicationContext)
+        Log.i(TAG, "WeaponIconCache initialized")
     }
 
     private fun startVpn() {
