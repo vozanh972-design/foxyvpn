@@ -25,10 +25,11 @@ object VerifiedEspParser {
             if (parseLocalKeyframe(data)) hits++
         } else {
             hits += parseEntityFrame(data)
-            if (parseTeamFrame(data))    hits++
-            if (parseDamageFrame(data))  hits++
-            if (parseWeaponFrame(data))  hits++   // NEW: detect weapon type từ entity state packet
-            if (parseKnockedFrame(data)) hits++   // NEW: detect knocked state
+            if (parseTeamFrame(data))       hits++
+            if (parseDamageFrame(data))     hits++
+            if (parseWeaponFrame(data))     hits++   // detect weapon type từ entity state packet
+            if (parseKnockedFrame(data))    hits++   // detect knocked state
+            if (parseVisibilityFrame(data)) hits++   // parse tên thật từ S2C_RUDP_SyncPlayersVisibility_Res
         }
         return hits
     }
@@ -286,5 +287,96 @@ object VerifiedEspParser {
             return true
         }
         return false
+    }
+
+    // ─── VISIBILITY FRAME ─────────────────────────────────────────
+    // Parse S2C_RUDP_SyncPlayersVisibility_Res (confirmed từ global-metadata.dat research):
+    // Fields: entity_id, player_id, team_id, weapon_type, pos_x, pos_y, pos_z,
+    //         pitch, is_visible, is_dead, visible, name, nick_name
+    //
+    // Packet đặc điểm:
+    //   - Size thường 40–200 bytes (có string fields)
+    //   - Inbound (server→client), cmd_id tương ứng visibility sync
+    //   - Có cả varint fields và length-delimited string (protobuf wire type 2)
+    //
+    // Strategy: scan packet tìm protobuf-encoded UTF-8 string fields (nick_name/name)
+    // sau một chuỗi varint hợp lệ chứa entity_id, team_id, v.v.
+    private fun parseVisibilityFrame(data: ByteArray): Boolean {
+        // Size: đủ nhỏ để tránh false positive với entity frame, đủ lớn để có string
+        if (data.size < 30 || data.size > 350) return false
+
+        // Heuristic: thử parse từ offset 8 như mọi packet
+        // S2C_RUDP_SyncPlayersVisibility_Res có cấu trúc:
+        //   varint entity_id (1-127)
+        //   varint player_id
+        //   varint team_id (0-20)
+        //   ... các varint khác ...
+        //   length-delimited string: nick_name (len varint + UTF-8 bytes)
+        //
+        // Tìm string UTF-8 hợp lệ (nick_name) trong payload
+        return scanForPlayerName(data, 8)
+    }
+
+    /**
+     * Scan payload từ [start] tìm pattern: varint entityId (1-127) rồi sau đó
+     * tìm length-prefixed UTF-8 string hợp lệ (tên người chơi, 2-20 ký tự).
+     * Khi tìm thấy → gọi EspEntityStore.updateName(entityId, name)
+     */
+    private fun scanForPlayerName(data: ByteArray, start: Int): Boolean {
+        val cur = intArrayOf(start)
+        val end = data.size
+
+        // Đọc varint đầu tiên = entity_id (phải 1-127)
+        val entityIdV = readVarint(data, cur, end)
+        if (entityIdV < 1L || entityIdV > 127L) return false
+        val entityId = entityIdV.toInt()
+
+        // Skip các varint tiếp (player_id, team_id, weapon_type, pos_x, pos_y, pos_z, pitch, flags)
+        // Tối đa skip 12 varint, tìm đến khi gặp length-delimited string
+        var found = false
+        for (attempt in 0..12) {
+            if (cur[0] >= end) break
+            // Thử đọc độ dài string tại vị trí hiện tại
+            val savedCur = cur[0]
+            val strLen = readVarint(data, cur, end)
+            if (strLen in 2L..32L) {
+                val strStart = cur[0]
+                val strEnd = strStart + strLen.toInt()
+                if (strEnd <= end) {
+                    // Kiểm tra có phải UTF-8 hợp lệ và printable không
+                    val candidate = try {
+                        String(data, strStart, strLen.toInt(), Charsets.UTF_8)
+                    } catch (e: Exception) { null }
+                    if (candidate != null && isValidPlayerName(candidate)) {
+                        EspEntityStore.updateName(entityId, candidate)
+                        found = true
+                        break
+                    }
+                }
+            }
+            // Không phải string ở đây → backtrack và skip 1 varint
+            cur[0] = savedCur
+            if (readVarint(data, cur, end) < 0) break
+        }
+        return found
+    }
+
+    /**
+     * Kiểm tra chuỗi có phải tên người chơi hợp lệ:
+     * - Độ dài 2–20 ký tự
+     * - Phần lớn là ký tự printable (không phải control chars)
+     * - Có ít nhất 1 chữ cái hoặc chữ số
+     */
+    private fun isValidPlayerName(name: String): Boolean {
+        if (name.length < 2 || name.length > 20) return false
+        var printableCount = 0
+        var alphanumCount = 0
+        for (c in name) {
+            val code = c.code
+            if (code >= 32 && code != 127) printableCount++
+            if (c.isLetterOrDigit()) alphanumCount++
+        }
+        val printableRatio = printableCount.toFloat() / name.length
+        return printableRatio >= 0.8f && alphanumCount >= 1
     }
 }
