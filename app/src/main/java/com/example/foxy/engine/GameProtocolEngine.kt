@@ -99,6 +99,8 @@ object GameProtocolEngine {
         if (header != null) {
             FreezeController.observeCommand(header.command, outbound)
             NetworkFeatures.observe(header.command, outbound)
+            // ── Phase detection: thông báo cho GamePhaseDetector ──
+            GamePhaseDetector.onCommand(header.command, outbound, data.size)
         }
 
         // ── Case 1: Unencrypted (flags & 3 == 0) hoặc không parse được header ──
@@ -187,6 +189,7 @@ object GameProtocolEngine {
         tcpBuffers.clear()
         learnedOrder = null
         EspEntityStore.reset()
+        GamePhaseDetector.reset()
     }
 
     private fun readInt32BE(b: ByteArray, i: Int): Int =

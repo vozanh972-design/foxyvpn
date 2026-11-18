@@ -25,8 +25,10 @@ object VerifiedEspParser {
             if (parseLocalKeyframe(data)) hits++
         } else {
             hits += parseEntityFrame(data)
-            if (parseTeamFrame(data))   hits++
-            if (parseDamageFrame(data)) hits++
+            if (parseTeamFrame(data))    hits++
+            if (parseDamageFrame(data))  hits++
+            if (parseWeaponFrame(data))  hits++   // NEW: detect weapon type từ entity state packet
+            if (parseKnockedFrame(data)) hits++   // NEW: detect knocked state
         }
         return hits
     }
@@ -244,5 +246,45 @@ object VerifiedEspParser {
             if (result.size > 2048) break  // Cap nhu original (const 2048)
         }
         return if (result.isEmpty()) null else result.toLongArray()
+    }
+
+    // ─── WEAPON FRAME ─────────────────────────────────────────
+    // Parse packet dạng entity weapon state: [entityId | weaponTypeEncoded]
+    // Dựa trên research: GetWeaponOnHand, GetWeaponType gắn với entity state packet
+    // Format heuristic: size 10-25, fields[1] chứa weaponTypeId (1-8)
+    private fun parseWeaponFrame(data: ByteArray): Boolean {
+        if (data.size < 10 || data.size > 25) return false
+        val fields = readAllVarints(data, 8, data.size) ?: return false
+        if (fields.size < 2) return false
+        val entityId   = (fields[0] and 0xFFFFFF).toInt()
+        val weaponCode = (fields[1] and 0xFF).toInt()
+        // weaponCode theo game: 1=AR,2=SMG,3=Sniper,4=Shotgun,5=Pistol,6=Melee,7=Launcher,8=Grenade
+        if (entityId < 1 || entityId > 127) return false
+        if (weaponCode < 1 || weaponCode > 8) return false
+        // Chỉ update nếu có entity này trong store (tránh false positive)
+        EspEntityStore.updateWeapon(entityId, weaponCode)
+        return true
+    }
+
+    // ─── KNOCKED FRAME ────────────────────────────────────────
+    // Parse packet khi địch bị gục (knocked down / DBNO state)
+    // Từ research: RUDP_SHOW_DAMAGE + HP = 0 → knocked
+    // Format heuristic: damage frame với damage >= current HP → knocked
+    private fun parseKnockedFrame(data: ByteArray): Boolean {
+        if (data.size < 20 || data.size > 40) return false
+        if ((data[8].toInt() and 0xFF) < 128) return false
+        if ((data[9].toInt() and 0xFF) != 128 || (data[10].toInt() and 0xFF) != 128) return false
+        val fields = readAllVarints(data, 8, data.size) ?: return false
+        // Cùng format với parseDamageFrame — nhưng check thêm field knocked flag
+        // fields[6] hoặc fields[7] có thể là knocked indicator (từ global-metadata: HITPROTECTION)
+        if (fields.size < 7) return false
+        val entityId     = (fields[0] and 0xFFFFFF).toInt()
+        val knockedFlag  = (fields[6] and 0x01).toInt()   // bit 0 = knocked
+        if (entityId < 1 || entityId > 127) return false
+        if (knockedFlag == 1) {
+            EspEntityStore.setKnocked(entityId, true)
+            return true
+        }
+        return false
     }
 }

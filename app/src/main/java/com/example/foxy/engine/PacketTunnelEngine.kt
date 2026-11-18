@@ -50,7 +50,10 @@ class PacketTunnelEngine(
 
         // Maintenance: cleanup idle flows mỗi 30s
         scheduler.scheduleAtFixedRate({
-            if (running.get()) cleanupFlows()
+            if (running.get()) {
+                cleanupFlows()
+                GamePhaseDetector.tick()   // Auto timeout: INGAME → LOBBY nếu game disconnect
+            }
         }, 30, 30, TimeUnit.SECONDS)
 
         val buf = ByteArray(65535)
@@ -285,7 +288,8 @@ class PacketTunnelEngine(
             try { GameProtocolEngine.processUdp(flowKey, udpData, true) } catch (_: Exception) {}
         }
 
-        val aimModified = if (!isDns) {
+        // ── AimCombatEngine: chỉ hoạt động khi đang trong trận ──
+        val aimModified = if (!isDns && GamePhaseDetector.isIngame()) {
             try { AimCombatEngine.process(flowKey, udpData, dstPort) } catch (_: Exception) { null }
         } else null
 
@@ -338,8 +342,12 @@ class PacketTunnelEngine(
                 val isDns = serverPort == 53 || clientPort == 53
                 if (!isDns) {
                     // === ESP detection (inbound: server → game) ===
+                    // GameProtocolEngine.processUdp luôn chạy để detect phase
                     try { GameProtocolEngine.processUdp(flowKey, data, false) } catch (_: Exception) {}
-                    val modified = try { PoseFreezeEngine.process(flowKey, data, false) } catch (_: Exception) { null }
+                    // PoseFreezeEngine chỉ hoạt động khi INGAME
+                    val modified = if (GamePhaseDetector.isIngame()) {
+                        try { PoseFreezeEngine.process(flowKey, data, false) } catch (_: Exception) { null }
+                    } else null
                     val out = modified ?: data
 
                     // Inject về TUN
