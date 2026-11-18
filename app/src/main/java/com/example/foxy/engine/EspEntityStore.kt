@@ -22,18 +22,22 @@ object EspEntityStore {
 
     // ─── Entity record ────────────────────────────────────────
     data class Entity(
-        val id:        Int,
-        val x:         Float,
-        val y:         Float,
-        val z:         Float,
-        val vx:        Float     = 0f,
-        val vy:        Float     = 0f,
-        val vz:        Float     = 0f,
-        val updatedAt: Long      = 0L,
-        val name:      String    = "",
-        val team:      Int       = 0,
-        val health:    Int       = 200,
-        val dead:      Boolean   = false,
+        val id:          Int,
+        val x:           Float,
+        val y:           Float,
+        val z:           Float,
+        val vx:          Float   = 0f,
+        val vy:          Float   = 0f,
+        val vz:          Float   = 0f,
+        val updatedAt:   Long    = 0L,
+        val name:        String  = "",
+        val team:        Int     = 0,
+        val health:      Int     = 200,
+        val maxHealth:   Int     = 200,
+        val dead:        Boolean = false,
+        val knocked:     Boolean = false,   // bị gục (knocked down, chưa chết hẳn)
+        val weaponType:  Int     = 0,       // 0=unknown,1=AR,2=SMG,3=Sniper,4=SG,5=Pistol,6=Melee,7=Launcher,8=Grenade
+        val factionId:   Int     = -1,      // factionId từ game (-1 = chưa biết)
     ) {
         // Tinh velocity tu diff position / diff time
         fun withPosition(nx: Float, ny: Float, nz: Float, ts: Long): Entity {
@@ -46,14 +50,30 @@ object EspEntityStore {
                 updatedAt = ts,
                 // Neu truoc do dead → reset HP (respawn)
                 health = if (dead) 200 else health,
-                dead = false
+                dead   = false,
+                knocked = false,
             )
         }
-        fun withTeam(t: Int)   = copy(team = t)
-        fun withName(n: String) = copy(name = n)
+        fun withTeam(t: Int)        = copy(team = t)
+        fun withName(n: String)     = copy(name = n)
+        fun withFaction(f: Int)     = copy(factionId = f)
+        fun withWeapon(wt: Int)     = copy(weaponType = wt)
+        fun withMaxHp(mhp: Int)     = copy(maxHealth = mhp.coerceIn(1, 500))
+        fun withKnocked(k: Boolean) = copy(knocked = k, dead = false)
         fun withDamage(dmg: Int): Entity {
             val hp = maxOf(0, health - dmg)
-            return copy(health = hp, dead = hp <= 0)
+            val nowKnocked = hp <= 0 && !dead
+            return copy(health = hp, knocked = nowKnocked, dead = false)
+        }
+
+        /** HP % [0.0 .. 1.0] */
+        val hpRatio: Float get() = (health.coerceIn(0, maxHealth).toFloat() / maxHealth.toFloat()).coerceIn(0f, 1f)
+
+        /** Label ngắn loại vũ khí để hiển thị trên ESP */
+        val weaponLabel: String get() = when (weaponType) {
+            1 -> "AR"; 2 -> "SMG"; 3 -> "SR"; 4 -> "SG"
+            5 -> "P"; 6 -> "M"; 7 -> "GL"; 8 -> "GR"
+            else -> ""
         }
     }
 
@@ -95,9 +115,12 @@ object EspEntityStore {
             vy        = if (prev == null) 0f else (y - prev.y) / dt,
             vz        = if (prev == null) 0f else (z - prev.z) / dt,
             updatedAt = ts,
-            name      = prev?.name   ?: "Me",
-            team      = prev?.team   ?: 0,
+            name      = prev?.name      ?: "Me",
+            team      = prev?.team      ?: 0,
             health    = if (prev == null) 200 else if (prev.dead) 200 else prev.health,
+            maxHealth = prev?.maxHealth ?: 200,
+            weaponType= prev?.weaponType?: 0,
+            factionId = prev?.factionId ?: -1,
             dead      = false
         )
         if (id > 0) entities.remove(id)  // Local player khong hien trong entities
@@ -117,10 +140,14 @@ object EspEntityStore {
         direction = Direction(sin(yaw).toFloat(), 0f, cos(yaw).toFloat(), yaw)
     }
 
-    fun updateTeam  (id: Int, team: Int)   { entities.computeIfPresent(id) { _, e -> e.withTeam(team) } }
-    fun updateName  (id: Int, name: String){ entities.computeIfPresent(id) { _, e -> e.withName(name) } }
-    fun applyDamage (id: Int, damage: Int) { entities.computeIfPresent(id) { _, e -> e.withDamage(damage) } }
-    fun localEntityId(): Int               = localPlayer?.id ?: -1
+    fun updateTeam   (id: Int, team: Int)    { entities.computeIfPresent(id) { _, e -> e.withTeam(team) } }
+    fun updateName   (id: Int, name: String) { entities.computeIfPresent(id) { _, e -> e.withName(name) } }
+    fun updateFaction(id: Int, fac: Int)     { entities.computeIfPresent(id) { _, e -> e.withFaction(fac) } }
+    fun updateWeapon (id: Int, wt: Int)      { entities.computeIfPresent(id) { _, e -> e.withWeapon(wt) } }
+    fun updateMaxHp  (id: Int, mhp: Int)     { entities.computeIfPresent(id) { _, e -> e.withMaxHp(mhp) } }
+    fun setKnocked   (id: Int, k: Boolean)   { entities.computeIfPresent(id) { _, e -> e.withKnocked(k) } }
+    fun applyDamage  (id: Int, damage: Int)  { entities.computeIfPresent(id) { _, e -> e.withDamage(damage) } }
+    fun localEntityId(): Int                 = localPlayer?.id ?: -1
 
     // ─── Snapshot cho rendering ───────────────────────────────
     // Copy y chang tu FULL_LOGIC: loc dead entities, 15s TTL
