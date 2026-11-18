@@ -321,7 +321,7 @@ object VerifiedEspParser {
     /**
      * Scan payload từ [start] tìm pattern: varint entityId (1-127) rồi sau đó
      * tìm length-prefixed UTF-8 string hợp lệ (tên người chơi, 2-20 ký tự).
-     * Khi tìm thấy → gọi EspEntityStore.updateName(entityId, name)
+     * Khi tìm thấy → gọi EspEntityStore.upsertName(entityId, name) (tạo mới nếu chưa có)
      */
     private fun scanForPlayerName(data: ByteArray, start: Int): Boolean {
         val cur = intArrayOf(start)
@@ -331,6 +331,16 @@ object VerifiedEspParser {
         val entityIdV = readVarint(data, cur, end)
         if (entityIdV < 1L || entityIdV > 127L) return false
         val entityId = entityIdV.toInt()
+
+        // Đọc thêm varint thứ 2 = team_id (0-30)
+        val savedAfterEntity = cur[0]
+        val teamId = readVarint(data, cur, end).toInt().coerceIn(0, 30)
+
+        // Đọc thêm varint thứ 3 = weapon_type (0-8)
+        val weaponType = readVarint(data, cur, end).toInt().coerceIn(0, 8)
+
+        // Reset về sau entityId nếu team/weapon không hợp lệ
+        if (teamId > 30) cur[0] = savedAfterEntity
 
         // Skip các varint tiếp (player_id, team_id, weapon_type, pos_x, pos_y, pos_z, pitch, flags)
         // Tối đa skip 12 varint, tìm đến khi gặp length-delimited string
@@ -349,7 +359,8 @@ object VerifiedEspParser {
                         String(data, strStart, strLen.toInt(), Charsets.UTF_8)
                     } catch (e: Exception) { null }
                     if (candidate != null && isValidPlayerName(candidate)) {
-                        EspEntityStore.updateName(entityId, candidate)
+                        // upsertName: tạo entity mới nếu chưa có (có tên thật ngay từ đầu)
+                        EspEntityStore.upsertName(entityId, candidate, teamId, weaponType)
                         found = true
                         break
                     }

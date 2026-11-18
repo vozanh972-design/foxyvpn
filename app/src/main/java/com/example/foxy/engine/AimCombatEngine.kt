@@ -96,36 +96,79 @@ object AimCombatEngine {
         if (dstPort == 53) return null
         if (data.size < FoxyPacketConstants.MIN_FIRE_PACKET_SIZE) return null
 
-        // Guard 2: chỉ hoạt động khi INGAME (phase detector)
-        if (!GamePhaseDetector.isIngame()) return null
+        // Guard 2: chỉ hoạt động khi INGAME hoặc có fire activity gần đây
+        // Training room cũng cần hoạt động → bỏ strict phase check,
+        // thay bằng check: đã từng thấy game traffic (không phải lobby thuần)
+        // GamePhaseDetector.isIngame() OR có fire pulse → đủ điều kiện
+        val hasFireActivity = FreezeController.isFiring()
+        if (!GamePhaseDetector.isIngame() && !hasFireActivity) return null
 
         // Guard 3: xác định headerSize từ data[0] thật
-        // Logic từ UdpSessionParser + Pigboy original:
-        //   data[0] < 100 → headerSize = 10 (long header)
-        //   data[0] >= 100 → headerSize = 8 (short header)
+        // data[0] < 100 → headerSize = 10 (long header)
+        // data[0] >= 100 → headerSize = 8 (short header)
         val firstByte = data[0].toInt() and 0xFF
-        // Nếu data[0] không trong range packet hợp lệ → skip
-        if (firstByte < 90 || firstByte >= 110) return null
-        val headerSize = if (firstByte < 100) FoxyPacketConstants.HEADER_SIZE_LONG
-                         else                 FoxyPacketConstants.HEADER_SIZE_SHORT
+        val headerSize = when {
+            firstByte < 100 -> FoxyPacketConstants.HEADER_SIZE_LONG   // 10
+            else             -> FoxyPacketConstants.HEADER_SIZE_SHORT  // 8
+        }
 
-        // Guard 4: offset bone phải nằm trong bounds của packet
-        val boneOffset = headerSize + BONE_OFFSET_IN_PAYLOAD
-        if (boneOffset >= data.size) return null
+        // Guard 4: chỉ rewrite khi đang bắn (CMD 104 đã được observe)
+        if (!hasFireActivity) return null
 
-        // Guard 5: chỉ rewrite khi đang bắn (CMD 104 đã được observe bởi GameProtocolEngine)
-        // FreezeController.isFiring() = true khi CMD 104 đã thấy và trong 700ms gần đây
-        // KHÔNG dùng NetworkFeatures.magnetActive() vì chế độ Ghim không set options.magnet
-        if (!FreezeController.isFiring()) return null
+        // ── Scan protobuf body tìm field bone thật ────────────────────────
+        // Thay vì hardcode offset 0x24, scan protobuf varint fields:
+        // C2S_RUDP_StartFire_Req body: field1=weapon, field2=target, field3=dist, field4=bone
+        // HitPart field value: 0=None, 1=Head, 2=Neck, 3=Chest, 4=Body, 5=Spine, 6=Hand, 7=Foot
+        // Nếu scan không tìm được → fallback hardcode offset
+        val bodyStart = headerSize
+        if (bodyStart >= data.size) return null
 
-        // Rewrite bone field → targetBone (HitPart enum value thật)
-        // Chỉ rewrite nếu giá trị hiện tại khác (tránh rewrite không cần thiết)
+        val boneOffset = findBoneOffset(data, bodyStart, targetBone)
+            ?: (headerSize + BONE_OFFSET_IN_PAYLOAD).also {
+                if (it >= data.size) return null
+            }
+
         val currentBone = data[boneOffset].toInt() and 0xFF
-        if (currentBone == targetBone) return null  // Đã đúng rồi, không cần sửa
+        if (currentBone == targetBone) return null
 
         val modified = data.clone()
         modified[boneOffset] = targetBone.toByte()
         return modified
+    }
+
+    /**
+     * Scan protobuf body để tìm offset của field bone (HitPart 0-7).
+     * Free Fire fire packet: protobuf fields đều là varint (wire type 0).
+     * Field 4 = bone field → field number 4, wire type 0 → tag byte = (4 << 3) | 0 = 0x20 = 32
+     *
+     * Trả về offset của VALUE byte (không phải tag), null nếu không tìm thấy.
+     */
+    private fun findBoneOffset(data: ByteArray, start: Int, targetBone: Int): Int? {
+        // Scan tìm tag byte 0x20 (field 4, wire type 0 = varint) trong body
+        // Giá trị sau tag phải là HitPart hợp lệ (0-7)
+        for (i in start until (data.size - 1)) {
+            val tag = data[i].toInt() and 0xFF
+            if (tag == 0x20) {  // field 4, varint
+                val valByte = data[i + 1].toInt() and 0xFF
+                if (valByte in 0..7) {
+                    // Xác nhận: giá trị != targetBone (đây là field cần sửa)
+                    return i + 1
+                }
+            }
+        }
+        // Fallback: scan tìm byte trong range 0-7 sau vị trí hợp lý
+        // Tìm byte khác với targetBone trong range bone hợp lệ
+        for (i in (start + 4) until (data.size - 1)) {
+            val b = data[i].toInt() and 0xFF
+            if (b in 0..7 && b != targetBone) {
+                // Kiểm tra byte trước nó là tag protobuf hợp lệ
+                val prevTag = data[i - 1].toInt() and 0xFF
+                if ((prevTag and 0x07) == 0 && (prevTag ushr 3) in 1..8) {
+                    return i
+                }
+            }
+        }
+        return null
     }
 
     fun reset() {

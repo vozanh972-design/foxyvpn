@@ -188,6 +188,27 @@ object EspEntityStore {
     fun updateActionFlag(id: Int, flag: Int, speed: Float = 0f) {
         entities.computeIfPresent(id) { _, e -> e.withActionFlag(flag, speed) }
     }
+
+    /**
+     * Upsert entity với tên thật từ visibility packet.
+     * Nếu entity chưa tồn tại → tạo mới với position (0,0,0) và tên đã biết.
+     * Khi parseEntityFrame sau đó cập nhật vị trí → entity sẽ có tên thật.
+     */
+    fun upsertName(id: Int, name: String, team: Int = 0, weaponType: Int = 0) {
+        if (id <= 0 || name.isBlank()) return
+        val lp = localPlayer
+        if (lp != null && lp.id == id) return  // Không update local player qua đây
+        val ts = System.currentTimeMillis()
+        entities.compute(id) { _, existing ->
+            existing?.copy(
+                name = name,
+                team = if (team > 0) team else existing.team,
+                weaponType = if (weaponType > 0) weaponType else existing.weaponType,
+            ) ?: Entity(id = id, x = 0f, y = 0f, z = 0f,
+                updatedAt = ts, name = name, team = team, weaponType = weaponType)
+        }
+    }
+
     fun localEntityId(): Int                    = localPlayer?.id ?: -1
 
     // ─── Snapshot cho rendering ───────────────────────────────
