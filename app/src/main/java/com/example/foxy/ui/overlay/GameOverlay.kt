@@ -128,8 +128,8 @@ fun GameOverlay(
     boost: BoostState = BoostState(),
     onBoostChange: (BoostState) -> Unit = {},
     onEagleEyeChange: (Boolean) -> Unit = {},
-    widthScale: Float = 1f,
-    heightScale: Float = 1f,
+    widthScale: Float = 0.75f,
+    heightScale: Float = 1.10f,
     onSizeChange: (Float, Float) -> Unit = { _, _ -> },
     modifier: Modifier = Modifier,
     panelScale: Float = PANEL_SCALE,
@@ -438,7 +438,7 @@ private fun SettingsContent(
                 fontWeight = FontWeight.SemiBold,
                 modifier = Modifier
                     .clip(RoundedCornerShape(10.dp))
-                    .clickable(role = Role.Button) { onSizeChange(1f, 1f) }
+                    .clickable(role = Role.Button) { onSizeChange(0.75f, 1.10f) }
                     .padding(horizontal = 8.dp, vertical = 3.dp),
             )
         }
