@@ -40,12 +40,13 @@ class EspHudView(context: Context) : View(context) {
 
     // ─── Tốc độ render: target 60fps = 16ms, dùng Choreographer ──
     // postInvalidateOnAnimation() sync với vsync của màn hình thay vì invalidate() loop thô
-    private val frameCallback = android.view.Choreographer.FrameCallback { _ ->
-        if (espEnabled) {
-            invalidate()
-            android.view.Choreographer.getInstance().postFrameCallback(frameCallback)
+    private val frameCallback: android.view.Choreographer.FrameCallback =
+        android.view.Choreographer.FrameCallback { _ ->
+            if (espEnabled) {
+                invalidate()
+                android.view.Choreographer.getInstance().postFrameCallback(frameCallback)
+            }
         }
-    }
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)

@@ -275,6 +275,7 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -337,18 +338,4 @@ private fun GamePickerSheet(
         }
     }
 
-    override fun onDestroy() {
-        super.onDestroy()
-        ShizukuBridge.destroy()
-    }
-
-    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<String>, grantResults: IntArray) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (Shizuku.onRequestPermissionsResult(requestCode, permissions, grantResults)) {
-            if (ShizukuBridge.isReady) {
-                ShizukuBridge.enableProcMem()
-                ShizukuBridge.killAntiCheat()
-            }
-        }
-    }
 }
