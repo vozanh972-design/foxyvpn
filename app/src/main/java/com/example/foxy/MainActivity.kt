@@ -71,8 +71,6 @@ import com.example.foxy.ui.theme.FoxyTheme
 import com.example.foxy.ui.theme.ResponsiveContainer
 import com.example.foxy.ui.theme.VeilColors
 import com.example.foxy.ui.theme.VeilTheme
-import com.example.foxy.util.ShizukuBridge
-import rikka.shizuku.Shizuku
 
 class MainActivity : ComponentActivity() {
 
@@ -96,9 +94,6 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // Shizuku: bypass anti-cheat Free Fire
-        ShizukuBridge.init()
-        ShizukuBridge.checkAndRequestPermission()
         enableEdgeToEdge(
             statusBarStyle     = SystemBarStyle.dark(AndroidColor.TRANSPARENT),
             navigationBarStyle = SystemBarStyle.light(AndroidColor.TRANSPARENT, AndroidColor.TRANSPARENT),

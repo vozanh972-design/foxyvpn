@@ -101,6 +101,7 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner, ViewM
     /**
      * Cập nhật độ trong suốt của cửa sổ nổi và lưu cấu hình (port từ TransparencyControl của STIRLAX).
      */
+    @JvmName("applyOverlayAlpha")
     fun setOverlayAlpha(alpha: Float) {
         val clamped = alpha.coerceIn(0.25f, 1.0f)
         overlayAlpha = clamped
