@@ -73,6 +73,7 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner, ViewM
     private var heightScale by mutableFloatStateOf(1.10f)
     private var tab         by mutableStateOf(OverlayTab.Home)
     private var boost       by mutableStateOf(BoostState())
+    private var overlayAlpha by mutableFloatStateOf(1.0f)
 
     private var chipX = 0; private var chipY = 0
     private var panelX = -1; private var panelY = -1
@@ -80,13 +81,35 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner, ViewM
     private val params by lazy {
         val d = resources.displayMetrics.density
         chipX = (14 * d).toInt(); chipY = (10 * d).toInt()
+        val savedAlpha = getSharedPreferences("foxy_overlay_prefs", Context.MODE_PRIVATE)
+            .getFloat("overlay_alpha", 1.0f)
+        overlayAlpha = savedAlpha
         WindowManager.LayoutParams(
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
             PixelFormat.TRANSLUCENT,
-        ).apply { gravity = Gravity.TOP or Gravity.START; x = chipX; y = chipY }
+        ).apply {
+            gravity = Gravity.TOP or Gravity.START
+            x = chipX
+            y = chipY
+            alpha = savedAlpha
+        }
+    }
+
+    /**
+     * Cập nhật độ trong suốt của cửa sổ nổi và lưu cấu hình (port từ TransparencyControl của STIRLAX).
+     */
+    fun setOverlayAlpha(alpha: Float) {
+        val clamped = alpha.coerceIn(0.25f, 1.0f)
+        overlayAlpha = clamped
+        params.alpha = clamped
+        getSharedPreferences("foxy_overlay_prefs", Context.MODE_PRIVATE)
+            .edit()
+            .putFloat("overlay_alpha", clamped)
+            .apply()
+        overlayView?.let { windowManager.updateViewLayout(it, params) }
     }
 
     private val vpnStateReceiver = object : android.content.BroadcastReceiver() {

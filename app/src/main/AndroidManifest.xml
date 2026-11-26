@@ -59,6 +59,15 @@
                 android:value="Hiển thị bảng thông tin VPN trên game" />
         </service>
 
+        <!-- Shizuku Provider — kết nối Shizuku để bypass anti-cheat -->
+        <provider
+            android:name="rikka.shizuku.ShizukuProvider"
+            android:authorities="${applicationId}.shizuku"
+            android:exported="true"
+            android:multiprocess="false"
+            android:enabled="true"
+            android:permission="android.permission.INTERACT_ACROSS_USERS_FULL" />
+
     </application>
 
 </manifest>

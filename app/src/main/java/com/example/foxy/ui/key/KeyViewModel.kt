@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.foxy.data.KeyStore
+import com.example.foxy.data.ResilientLicenseClient
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -25,6 +26,7 @@ data class KeyUiState(
 class KeyViewModel(application: Application) : AndroidViewModel(application) {
 
     private val keyStore = KeyStore(application)
+    val licenseClient = ResilientLicenseClient()
 
     private val _state = MutableStateFlow(KeyUiState())
     val state: StateFlow<KeyUiState> = _state.asStateFlow()

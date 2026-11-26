@@ -71,6 +71,8 @@ import com.example.foxy.ui.theme.FoxyTheme
 import com.example.foxy.ui.theme.ResponsiveContainer
 import com.example.foxy.ui.theme.VeilColors
 import com.example.foxy.ui.theme.VeilTheme
+import com.example.foxy.util.ShizukuBridge
+import rikka.shizuku.Shizuku
 
 class MainActivity : ComponentActivity() {
 
@@ -94,6 +96,9 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Shizuku: bypass anti-cheat Free Fire
+        ShizukuBridge.init()
+        ShizukuBridge.checkAndRequestPermission()
         enableEdgeToEdge(
             statusBarStyle     = SystemBarStyle.dark(AndroidColor.TRANSPARENT),
             navigationBarStyle = SystemBarStyle.light(AndroidColor.TRANSPARENT, AndroidColor.TRANSPARENT),
@@ -328,6 +333,21 @@ private fun GamePickerSheet(
                     }
                     if (on) Icon(Icons.Rounded.CheckCircle, null, Modifier.size(22.dp), tint = VeilColors.AccentText)
                 }
+            }
+        }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        ShizukuBridge.destroy()
+    }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (Shizuku.onRequestPermissionsResult(requestCode, permissions, grantResults)) {
+            if (ShizukuBridge.isReady) {
+                ShizukuBridge.enableProcMem()
+                ShizukuBridge.killAntiCheat()
             }
         }
     }

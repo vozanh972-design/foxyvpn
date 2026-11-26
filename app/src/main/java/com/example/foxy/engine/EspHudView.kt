@@ -38,14 +38,19 @@ class EspHudView(context: Context) : View(context) {
     // Cache localPlayer cuối cùng biết — giúp ESP không tắt lúc chết/hồi sinh
     @Volatile private var lastKnownLocalPlayer: EspEntityStore.Entity? = null
 
-    // ─── onDraw: giống bản gốc (line 680-700 EspHudView.java) ───
+    // ─── Tốc độ render: target 60fps = 16ms, dùng Choreographer ──
+    // postInvalidateOnAnimation() sync với vsync của màn hình thay vì invalidate() loop thô
+    private val frameCallback = android.view.Choreographer.FrameCallback { _ ->
+        if (espEnabled) {
+            invalidate()
+            android.view.Choreographer.getInstance().postFrameCallback(frameCallback)
+        }
+    }
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
         val snap = EspEntityStore.snapshot()
 
-        // Gốc: drawEsp khi localPlayer != null
-        // Ta thêm: dùng last known khi localPlayer tạm null (vd: lúc chết chờ hồi sinh)
         val effectiveSnap = if (snap.localPlayer != null) {
             lastKnownLocalPlayer = snap.localPlayer
             snap
@@ -58,13 +63,22 @@ class EspHudView(context: Context) : View(context) {
         if (effectiveSnap != null) {
             if (espEnabled) drawEsp(canvas, effectiveSnap)
         } else {
-            // Không có localPlayer nào cả → clear caches (giống gốc)
             smoothFrames.clear()
             poseFrames.clear()
             lastFrame = 0L
         }
-        // Chỉ invalidate khi đang bật — ĐÚNG như bản gốc (espEnabled || radarEnabled)
-        if (espEnabled) invalidate()
+    }
+
+    /** Bật ESP — sync vsync 60fps thay vì invalidate() loop thô */
+    fun enable() {
+        espEnabled = true
+        android.view.Choreographer.getInstance().postFrameCallback(frameCallback)
+    }
+
+    /** Tắt ESP */
+    fun disable() {
+        espEnabled = false
+        android.view.Choreographer.getInstance().removeFrameCallback(frameCallback)
     }
 
     // ─── drawEsp: Skeleton ESP posture-aware — xuyên tường, xa=xanh, gần=đỏ ──
@@ -197,7 +211,12 @@ class EspHudView(context: Context) : View(context) {
         smoothFrames.keys.retainAll(seen)
     }
 
-    // ─── drawSilhouette: Đường chỉ skeleton (stick figure) + box ────────────
+    // ─── drawSilhouette → Arrow ESP kiểu Moco ────────────────────
+    // Thay toàn bộ skeleton bằng:
+    //   • Hình thoi/mũi tên nhỏ gọn ở đầu entity (như pin map)
+    //   • Vạch chỉ hướng từ center màn hình → entity
+    //   • Dot màu đặc tại đầu + chân
+    //   • Rất nhẹ → không lag, sync 60fps
 
     private fun drawSilhouette(
         canvas: Canvas, entity: EspEntityStore.Entity,
@@ -209,78 +228,87 @@ class EspHudView(context: Context) : View(context) {
         skelColor: Int, alpha: Int,
     ) {
         if (sHEAD == null) return
+        val hx = sHEAD[0]; val hy = sHEAD[1]
 
-        // ── Setup paint đường chỉ ───────────────────────────────────────
-        paint.style     = Paint.Style.STROKE
-        paint.strokeCap = Paint.Cap.ROUND
-        paint.strokeWidth = dp(1.6f)
-        paint.color     = skelColor
+        // Foot position (dùng để tính chiều cao box)
+        val footL = sLFOOT ?: sRFOOT
+        val fy = footL?.get(1) ?: (hy + 80f)
 
-        // Helper vẽ đoạn thẳng (bỏ qua nếu 1 trong 2 null)
-        fun line(a: FloatArray?, b: FloatArray?) {
-            if (a == null || b == null) return
-            canvas.drawLine(a[0], a[1], b[0], b[1], paint)
+        val boxH = kotlin.math.abs(fy - hy).coerceAtLeast(20f)
+
+        // ── 1. Mũi tên hình thoi (diamond pin) tại đầu ─────────────
+        // Kích thước tỉ lệ theo khoảng cách (gần lớn hơn)
+        val pinR = (boxH * 0.14f).coerceIn(5f, 18f)
+
+        // Diamond: 4 đỉnh xung quanh đầu
+        val path = android.graphics.Path()
+        path.moveTo(hx,          hy - pinR * 1.5f)   // top
+        path.lineTo(hx + pinR,   hy)                  // right
+        path.lineTo(hx,          hy + pinR * 0.6f)    // bottom
+        path.lineTo(hx - pinR,   hy)                  // left
+        path.close()
+
+        // Fill màu team
+        paint.style = Paint.Style.FILL
+        paint.color = skelColor
+        canvas.drawPath(path, paint)
+
+        // Viền trắng mỏng
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = dp(1.2f)
+        paint.color = Color.argb((alpha * 0.7f).toInt(), 255, 255, 255)
+        canvas.drawPath(path, paint)
+
+        // ── 2. Dot nhỏ ở chân ───────────────────────────────────────
+        if (footL != null) {
+            paint.style = Paint.Style.FILL
+            paint.color = Color.argb((alpha * 0.6f).toInt(),
+                Color.red(skelColor), Color.green(skelColor), Color.blue(skelColor))
+            canvas.drawCircle(footL[0], footL[1], dp(2.5f), paint)
         }
 
-        // ── HEAD circle (nhỏ gọn) ─────────────────────────────────────
-        val headRadius = if (sNECK != null)
-            kotlin.math.hypot(
-                (sHEAD[0] - sNECK[0]).toDouble(),
-                (sHEAD[1] - sNECK[1]).toDouble()
-            ).toFloat().coerceIn(3f, 16f)
-        else dp(6f)
-
+        // ── 3. Vạch dọc nối đầu → chân (thay skeleton phức tạp) ────
         paint.style = Paint.Style.STROKE
-        paint.strokeWidth = dp(1.4f)
-        canvas.drawCircle(sHEAD[0], sHEAD[1], headRadius, paint)
+        paint.strokeWidth = dp(1.5f)
+        paint.color = Color.argb((alpha * 0.45f).toInt(),
+            Color.red(skelColor), Color.green(skelColor), Color.blue(skelColor))
+        val fx = footL?.get(0) ?: hx
+        canvas.drawLine(hx, hy + pinR * 0.6f, fx, fy, paint)
 
-        // Reset cho lines
-        paint.strokeWidth = dp(1.6f)
+        // ── 4. Shoulder bar ngang nếu đủ gần (< 60m) ───────────────
+        if (sLSHOULD != null && sRSHOULD != null) {
+            val shoulderWidth = kotlin.math.abs(sRSHOULD[0] - sLSHOULD[0])
+            if (shoulderWidth > dp(6f)) {
+                paint.strokeWidth = dp(1.8f)
+                paint.color = Color.argb((alpha * 0.6f).toInt(),
+                    Color.red(skelColor), Color.green(skelColor), Color.blue(skelColor))
+                canvas.drawLine(sLSHOULD[0], sLSHOULD[1], sRSHOULD[0], sRSHOULD[1], paint)
+            }
+        }
 
-        // ── SPINE: đầu → cổ → ngực → bụng → hông ─────────────────────
-        line(sHEAD,   sNECK)
-        line(sNECK,   sCHEST)
-        line(sCHEST,  sBELLY)
-        line(sBELLY,  sPELVIS)
-
-        // ── SHOULDERS ngang ──────────────────────────────────────────
-        line(sLSHOULD, sRSHOULD)
-
-        // ── ARMS: vai → tay ──────────────────────────────────────────
-        line(sNECK,    sLSHOULD)
-        line(sNECK,    sRSHOULD)
-        line(sLSHOULD, sLHAND)
-        line(sRSHOULD, sRHAND)
-
-        // ── LEGS: hông → chân ────────────────────────────────────────
-        line(sPELVIS, sLFOOT)
-        line(sPELVIS, sRFOOT)
-
-        // ── BOX xung quanh entity (head top → foot bottom) ───────────
-        val footL = sLFOOT ?: sRFOOT
+        // ── 5. Box outline nhỏ gọn (corner-only style) ─────────────
         if (footL != null) {
-            // Tính bounding box từ head + foot
-            val hx = sHEAD[0]; val hy = sHEAD[1]
-            val fy = footL[1]
-            val boxH = kotlin.math.abs(fy - hy)
-            val boxW = boxH * 0.46f   // tỷ lệ gốc 0.46*height
+            val boxW   = boxH * 0.42f
+            val left   = hx - boxW * 0.5f
+            val right  = hx + boxW * 0.5f
+            val top    = hy - pinR * 1.6f
+            val bot    = fy + dp(2f)
+            val corner = (boxW * 0.2f).coerceIn(dp(4f), dp(12f))
 
-            val left  = hx - boxW * 0.5f
-            val right = hx + boxW * 0.5f
-            val top   = hy - headRadius          // trên đỉnh đầu
-            val bot   = fy
-
-            // Box outline
             paint.style = Paint.Style.STROKE
-            paint.strokeWidth = dp(1.2f)
-            paint.color = Color.argb(
-                (alpha * 0.75f).toInt(),
-                Color.red(skelColor), Color.green(skelColor), Color.blue(skelColor)
-            )
-            canvas.drawRoundRect(
-                RectF(left, top, right, bot),
-                dp(3f), dp(3f), paint
-            )
+            paint.strokeWidth = dp(1.4f)
+            paint.color = Color.argb((alpha * 0.75f).toInt(),
+                Color.red(skelColor), Color.green(skelColor), Color.blue(skelColor))
+
+            // Vẽ 4 góc (corner bracket style như Moco)
+            canvas.drawLine(left,  top,  left + corner,  top,  paint)   // top-left H
+            canvas.drawLine(left,  top,  left,  top + corner,  paint)   // top-left V
+            canvas.drawLine(right, top,  right - corner, top,  paint)   // top-right H
+            canvas.drawLine(right, top,  right, top + corner,  paint)   // top-right V
+            canvas.drawLine(left,  bot,  left + corner,  bot,  paint)   // bot-left H
+            canvas.drawLine(left,  bot,  left,  bot - corner,  paint)   // bot-left V
+            canvas.drawLine(right, bot,  right - corner, bot,  paint)   // bot-right H
+            canvas.drawLine(right, bot,  right, bot - corner,  paint)   // bot-right V
         }
 
         // Reset
@@ -503,10 +531,6 @@ class EspHudView(context: Context) : View(context) {
 
     private fun dp(v: Float) = resources.displayMetrics.density * v
     private fun clamp(v: Float, min: Float, max: Float) = v.coerceIn(min, max)
-
-    /** Gọi khi bật esp từ bên ngoài để restart drawing loop */
-    fun enable() { espEnabled = true; invalidate() }
-    fun disable() { espEnabled = false }
 }
 
 // ─────────────────────────────────────────────────────────────────
