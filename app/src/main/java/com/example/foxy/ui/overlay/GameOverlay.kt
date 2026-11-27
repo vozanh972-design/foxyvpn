@@ -2,7 +2,6 @@ package com.example.foxy.ui.overlay
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -43,23 +42,18 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ColorFilter
-import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -70,7 +64,6 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.foxy.R
 import com.example.foxy.ui.home.CountryFlag
 import com.example.foxy.ui.home.SignalBars
 import com.example.foxy.ui.theme.VeilColors
@@ -403,17 +396,7 @@ private fun EagleEyeContent(enabled: Boolean, onToggle: (Boolean) -> Unit, modif
             Modifier.weight(1f).fillMaxWidth().clip(RoundedCornerShape(18.dp))
                 .background(if (enabled) Color.Black.copy(alpha = 0.25f) else Color.White.copy(alpha = 0.04f))
                 .border(1.dp, Color.White.copy(alpha = if (enabled) 0.10f else 0.04f), RoundedCornerShape(18.dp)),
-            contentAlignment = Alignment.Center,
-        ) {
-            Image(
-                painter = painterResource(R.drawable.eagle_eye_preview),
-                contentDescription = "Mắt thần",
-                contentScale = ContentScale.FillBounds,
-                alignment = Alignment.Center,
-                colorFilter = if (enabled) null else ColorFilter.colorMatrix(ColorMatrix().apply { setToSaturation(0f) }),
-                modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(18.dp)).alpha(if (enabled) 1f else 0.35f),
-            )
-        }
+        )
     }
 }
 

@@ -203,9 +203,9 @@ class EspHudView(context: Context) : View(context) {
                 sLFOOT, sRFOOT,
                 skelColor, alpha)
 
-            // ══ NAMEPLATE NGANG (phía trên đầu) + HP bar bên dưới nameplate ═
+            // ══ NAMEPLATE GỌN (đẩy cao trên đầu, không che tầm ngắm) ═
             val footRef2 = sLFOOT ?: sRFOOT
-            drawNameplate(canvas, entity, headScrX, headScrY - dp(4f), dist, skelColor, isTeammate, footRef2)
+            drawNameplate(canvas, entity, headScrX, headScrY - dp(22f), dist, skelColor, isTeammate, footRef2)
         }
 
         poseFrames.keys.retainAll(seen)
@@ -316,7 +316,7 @@ class EspHudView(context: Context) : View(context) {
         paint.strokeCap = Paint.Cap.BUTT
     }
 
-    // ─── Nameplate: thanh ngang [WEAPON] NAME STATE_BADGE + HP bar bên dưới ───
+    // ─── Nameplate gọn nhẹ: [ID] Xm + HP bar mảnh bên dưới ─────────────────
 
     private fun drawNameplate(
         canvas: Canvas,
@@ -326,157 +326,73 @@ class EspHudView(context: Context) : View(context) {
         dist: Float,
         skelColor: Int,
         isTeammate: Boolean,
-        footRef: FloatArray?,   // null-able: dùng cho HP bar ngang bên dưới
+        footRef: FloatArray?,
     ) {
-        val displayName = entity.name.ifBlank { "?${entity.id}" }.let {
-            if (it.length > 14) it.take(12) + "…" else it
-        }
-
-        // ── Background xám tối cho địch, xanh đậm cho đồng đội ───
-        val bgColor = if (isTeammate)
-            Color.argb(220,  20,  55, 130)   // Xanh đậm = teammate
-        else
-            Color.argb(220,  40,  40,  45)   // Xám rất tối = địch
-
-        val accentColor = if (isTeammate)
-            Color.argb(255,  50, 150, 255)   // Accent xanh
-        else
-            Color.argb(255, 200,  50,  50)   // Accent đỏ nhạt
-
-        // ── State badge text + màu ─────────────────────────────
-        val stateTxt = entity.stateLabel
-        val stateColor = when {
-            entity.knocked     -> Color.rgb(255, 165,   0)   // Cam = knocked
-            entity.isFiring    -> Color.rgb(255,  50,  50)   // Đỏ = bắn
-            entity.isAiming    -> Color.rgb(255, 215,   0)   // Vàng = ngắm
-            entity.isProne     -> Color.rgb(  0, 200, 200)   // Cyan = nằm
-            entity.isCrouching -> Color.rgb(  0, 200, 200)   // Cyan = ngồi
-            entity.isSprinting -> Color.rgb(140, 140, 140)   // Xám = chạy
-            else               -> 0
-        }
-
-        // ── Weapon: icon bitmap thật (nếu có) hoặc fallback text ──
-        val wLabel   = entity.weaponLabel   // AR/SMG/SR...
-        val iconSize = dp(WeaponIconCache.ICON_SIZE_DP).toInt().coerceAtLeast(8)
-        val wBitmap  = WeaponIconCache.getScaled(entity.weaponType, iconSize)
-
-        // Measure weapon section width
-        val wW: Float = when {
-            wBitmap != null -> iconSize.toFloat() + dp(3f) + run {
-                text.textSize = dp(7f); text.measureText(wLabel)
-            } + dp(5f)
-            wLabel.isNotEmpty() -> run {
-                text.textSize = dp(7.5f); text.measureText(wLabel)
-            } + dp(8f)
-            else -> 0f
-        }
-
-        // ── Measure text ───────────────────────────────────────
-        text.typeface  = android.graphics.Typeface.DEFAULT_BOLD
-        text.textSize  = dp(9f)
-        text.textAlign = Paint.Align.LEFT
-
-        val nameW   = text.measureText(displayName)
-        text.textSize = dp(7f)
+        val badgeText = entity.id.toString()
         val distTxt = "${dist.toInt()}m"
-        val distW   = text.measureText(distTxt) + dp(6f)
-        val stateW  = if (stateTxt.isNotEmpty()) text.measureText(stateTxt) + dp(10f) else 0f
-        text.textSize = dp(9f)
 
-        val barH    = dp(15f)
-        val barW    = dp(6f) + wW + nameW + dp(4f) + distW + (if (stateW > 0f) stateW + dp(4f) else 0f) + dp(6f)
-        val barW2   = barW.coerceAtLeast(dp(60f))
-        val accentW = dp(4f)
+        val badgeColor = when {
+            entity.knocked -> Color.rgb(255, 165, 0)
+            isTeammate     -> Color.rgb(50, 150, 255)
+            else           -> Color.rgb(220, 55, 55)
+        }
 
-        val barL = cx - barW2 * 0.5f
-        val barR = barL + barW2
-        val barT = headTop - barH - dp(2f)
-        val barB = headTop - dp(2f)
-        val textY = barT + barH * 0.68f   // Baseline
+        val badgeSize = dp(13f)
+        val gap = dp(4f)
 
-        // ── Background thanh nameplate ─────────────────────────
+        text.typeface = android.graphics.Typeface.DEFAULT_BOLD
+        text.textSize = dp(10f)
+        val distW = text.measureText(distTxt)
+
+        val totalW = badgeSize + gap + distW
+        val startX = cx - totalW * 0.5f
+        val tagBottom = headTop - dp(5f)
+        val tagTop = tagBottom - badgeSize
+
+        // Badge vuông nhỏ chứa số ID
         paint.style = Paint.Style.FILL
-        paint.color = bgColor
-        canvas.drawRoundRect(RectF(barL, barT, barR, barB), dp(3f), dp(3f), paint)
+        paint.color = badgeColor
+        canvas.drawRoundRect(
+            RectF(startX, tagTop, startX + badgeSize, tagBottom),
+            dp(2.5f), dp(2.5f), paint
+        )
 
-        // ── Accent strip màu ở bên trái ────────────────────────
-        paint.color = accentColor
-        canvas.drawRoundRect(RectF(barL, barT, barL + accentW, barB), dp(2f), dp(2f), paint)
+        text.textSize = dp(8f)
+        text.color = Color.WHITE
+        text.textAlign = Paint.Align.CENTER
+        text.clearShadowLayer()
+        val fmBadge = text.fontMetrics
+        val badgeTextY = tagTop + badgeSize * 0.5f - (fmBadge.ascent + fmBadge.descent) * 0.5f
+        canvas.drawText(badgeText, startX + badgeSize * 0.5f, badgeTextY, text)
 
-        // ── Nội dung từ trái sang phải ─────────────────────────
-        var curX = barL + accentW + dp(5f)
-
-        // Weapon icon bitmap thật (từ FF game assets) + text label
-        if (wBitmap != null) {
-            // Vẽ bitmap icon căn giữa dọc trong thanh
-            val iconTop = barT + (barH - iconSize) * 0.5f
-            canvas.drawBitmap(wBitmap, curX, iconTop, paint)
-            curX += iconSize + dp(3f)
-            if (wLabel.isNotEmpty()) {
-                text.textSize  = dp(7f)
-                text.typeface  = android.graphics.Typeface.DEFAULT
-                text.color     = Color.argb(220, 150, 220, 255)
-                text.textAlign = Paint.Align.LEFT
-                canvas.drawText(wLabel, curX, textY, text)
-                curX += text.measureText(wLabel) + dp(5f)
-            }
-        } else if (wLabel.isNotEmpty()) {
-            // Fallback: chỉ text label khi chưa có icon
-            text.textSize  = dp(7.5f)
-            text.typeface  = android.graphics.Typeface.DEFAULT
-            text.color     = Color.argb(220, 150, 220, 255)
-            text.textAlign = Paint.Align.LEFT
-            canvas.drawText(wLabel, curX, textY, text)
-            curX += text.measureText(wLabel) + dp(5f)
-        }
-
-        // Tên nhân vật (trắng, đậm)
-        text.textSize  = dp(9f)
-        text.typeface  = android.graphics.Typeface.DEFAULT_BOLD
-        text.color     = Color.WHITE
+        // Khoảng cách Xm kế bên badge (có bóng đen nhẹ cho dễ đọc)
+        text.textSize = dp(10f)
+        text.color = Color.WHITE
         text.textAlign = Paint.Align.LEFT
-        canvas.drawText(displayName, curX, textY, text)
-        curX += text.measureText(displayName) + dp(4f)
+        text.setShadowLayer(dp(1.5f), 0f, dp(1f), Color.BLACK)
+        val fmDist = text.fontMetrics
+        val distTextY = tagTop + badgeSize * 0.5f - (fmDist.ascent + fmDist.descent) * 0.5f
+        canvas.drawText(distTxt, startX + badgeSize + gap, distTextY, text)
+        text.clearShadowLayer()
 
-        // Khoảng cách nhỏ (màu xám, thay vì hiện riêng phía trên)
-        text.textSize = dp(7f)
-        text.typeface = android.graphics.Typeface.DEFAULT
-        text.color    = Color.argb(180, 180, 180, 180)
-        text.textAlign = Paint.Align.LEFT
-        canvas.drawText(distTxt, curX, textY, text)
-        curX += text.measureText(distTxt) + dp(4f)
-
-        // State badge
-        if (stateTxt.isNotEmpty() && stateColor != 0) {
-            text.textSize = dp(7f)
-            val badgeW = text.measureText(stateTxt) + dp(8f)
-            val badgeL = curX
-            val badgeB2 = barB - dp(2f)
-            val badgeT2 = barT + dp(2f)
-            paint.style = Paint.Style.FILL
-            paint.color = Color.argb(190, Color.red(stateColor), Color.green(stateColor), Color.blue(stateColor))
-            canvas.drawRoundRect(RectF(badgeL, badgeT2, badgeL + badgeW, badgeB2), dp(2f), dp(2f), paint)
-            text.typeface  = android.graphics.Typeface.DEFAULT_BOLD
-            text.color     = Color.WHITE
-            text.textAlign = Paint.Align.CENTER
-            canvas.drawText(stateTxt, badgeL + badgeW * 0.5f, textY, text)
-        }
-
-        // ── HP bar NGANG bên dưới thanh nameplate ──────────────
-        val hpBarH  = dp(3.5f)
-        val hpBarT  = barB + dp(1f)
-        val hpBarB  = hpBarT + hpBarH
+        // Thanh HP mảnh gọn đúng bằng bề rộng tag (tối thiểu 26dp)
+        val hpW = totalW.coerceAtLeast(dp(26f))
+        val hpL = cx - hpW * 0.5f
+        val hpR = hpL + hpW
+        val hpT = tagBottom + dp(2f)
+        val hpB = hpT + dp(2.2f)
         val hpRatio = entity.hpRatio
+
         paint.style = Paint.Style.FILL
-        paint.color = Color.argb(160, 20, 20, 20)
-        canvas.drawRoundRect(RectF(barL, hpBarT, barR, hpBarB), dp(1.5f), dp(1.5f), paint)
+        paint.color = Color.argb(150, 15, 15, 15)
+        canvas.drawRoundRect(RectF(hpL, hpT, hpR, hpB), dp(1f), dp(1f), paint)
+
         paint.color = when {
             hpRatio > 0.6f -> Color.rgb(60, 220, 100)
-            hpRatio > 0.3f -> Color.rgb(255, 190,  40)
-            else           -> Color.rgb(255,  60,  60)
+            hpRatio > 0.3f -> Color.rgb(255, 190, 40)
+            else           -> Color.rgb(255, 60, 60)
         }
-        val hpFillR = barL + (barR - barL) * hpRatio
-        canvas.drawRoundRect(RectF(barL, hpBarT, hpFillR, hpBarB), dp(1.5f), dp(1.5f), paint)
+        canvas.drawRoundRect(RectF(hpL, hpT, hpL + hpW * hpRatio, hpB), dp(1f), dp(1f), paint)
     }
 
     // ─── drawEdge: chấm rìa màn hình với màu team ────────────────
@@ -516,15 +432,13 @@ class EspHudView(context: Context) : View(context) {
         paint.color       = Color.argb(120, 255, 255, 255)
         canvas.drawCircle(ex, ey, dp(3.5f), paint)
 
-        // Khoảng cách + tên ngắn
-        text.typeface  = android.graphics.Typeface.DEFAULT
+        // Khoảng cách (chỉ hiện Xm, bỏ tên)
+        text.typeface  = android.graphics.Typeface.DEFAULT_BOLD
         text.textSize  = dp(8.5f)
         text.textAlign = Paint.Align.CENTER
         text.setShadowLayer(dp(1.5f), 0f, dp(1f), Color.BLACK)
-        text.color     = Color.argb(lineAlpha, 220, 220, 220)
-        val nameShort  = entity.name.take(8).ifBlank { "?${entity.id}" }
+        text.color     = Color.argb(lineAlpha, 235, 235, 235)
         canvas.drawText("${dist.toInt()}m", ex, ey + dp(13f), text)
-        canvas.drawText(nameShort, ex, ey + dp(22f), text)
         text.clearShadowLayer()
     }
 
