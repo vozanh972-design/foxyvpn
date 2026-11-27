@@ -20,7 +20,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -92,6 +94,8 @@ data class GameOverlayState(
     val eagleEyeEnabled: Boolean = true,
     val boxEnabled: Boolean = false,
     val radarEnabled: Boolean = false,
+    val fovEnabled: Boolean = false,
+    val fovRadiusDp: Float = 60f,
     val languageLabel: String = "Tiếng Việt",
     val isConnected: Boolean = true,
 )
@@ -125,6 +129,8 @@ fun GameOverlay(
     onEagleEyeChange: (Boolean) -> Unit = {},
     onBoxChange: (Boolean) -> Unit = {},
     onRadarChange: (Boolean) -> Unit = {},
+    onFovChange: (Boolean) -> Unit = {},
+    onFovRadiusChange: (Float) -> Unit = {},
     widthScale: Float = 0.75f,
     heightScale: Float = 1.10f,
     onSizeChange: (Float, Float) -> Unit = { _, _ -> },
@@ -160,7 +166,19 @@ fun GameOverlay(
                 when (tab) {
                     OverlayTab.Home -> HomeContent(state, onDisconnect, onPriorityChange, onServerClick, onLanguageClick, content)
                     OverlayTab.Boost -> BoostContent(boost, onBoostChange, content)
-                    OverlayTab.EagleEye -> EagleEyeContent(state.eagleEyeEnabled, state.boxEnabled, state.radarEnabled, onEagleEyeChange, onBoxChange, onRadarChange, content)
+                    OverlayTab.EagleEye -> EagleEyeContent(
+                        enabled = state.eagleEyeEnabled,
+                        boxEnabled = state.boxEnabled,
+                        radarEnabled = state.radarEnabled,
+                        fovEnabled = state.fovEnabled,
+                        fovRadiusDp = state.fovRadiusDp,
+                        onToggle = onEagleEyeChange,
+                        onBoxToggle = onBoxChange,
+                        onRadarToggle = onRadarChange,
+                        onFovToggle = onFovChange,
+                        onFovRadiusChange = onFovRadiusChange,
+                        modifier = content,
+                    )
                     OverlayTab.Settings -> SettingsContent(widthScale, heightScale, onSizeChange, content)
                 }
             }
@@ -384,11 +402,17 @@ private fun EagleEyeContent(
     enabled: Boolean,
     boxEnabled: Boolean,
     radarEnabled: Boolean,
+    fovEnabled: Boolean,
+    fovRadiusDp: Float,
     onToggle: (Boolean) -> Unit,
     onBoxToggle: (Boolean) -> Unit,
     onRadarToggle: (Boolean) -> Unit,
+    onFovToggle: (Boolean) -> Unit,
+    onFovRadiusChange: (Float) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val anyActive = enabled || boxEnabled || radarEnabled || fovEnabled
+    val view = LocalView.current
     Column(modifier, verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Row(
             Modifier.fillMaxWidth().height(54.dp).clip(RoundedCornerShape(18.dp)).background(CardBg)
@@ -406,10 +430,11 @@ private fun EagleEyeContent(
         }
         Column(
             Modifier.weight(1f).fillMaxWidth().clip(RoundedCornerShape(18.dp))
-                .background(if (enabled || boxEnabled || radarEnabled) Color.Black.copy(alpha = 0.25f) else Color.White.copy(alpha = 0.04f))
-                .border(1.dp, Color.White.copy(alpha = if (enabled || boxEnabled || radarEnabled) 0.10f else 0.04f), RoundedCornerShape(18.dp))
+                .background(if (anyActive) Color.Black.copy(alpha = 0.25f) else Color.White.copy(alpha = 0.04f))
+                .border(1.dp, Color.White.copy(alpha = if (anyActive) 0.10f else 0.04f), RoundedCornerShape(18.dp))
+                .verticalScroll(rememberScrollState())
                 .padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             EagleEyeOptionRow(
                 title = "Khung 4 cạnh (Box)",
@@ -423,6 +448,46 @@ private fun EagleEyeContent(
                 checked = radarEnabled,
                 onToggle = onRadarToggle,
             )
+            EagleEyeOptionRow(
+                title = "Vòng tâm",
+                subtitle = "Vòng tròn căn giữa màn hình",
+                checked = fovEnabled,
+                onToggle = onFovToggle,
+            )
+            if (fovEnabled) {
+                Column(
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp))
+                        .background(CardBg)
+                        .padding(horizontal = 14.dp, vertical = 8.dp),
+                ) {
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text("Kích thước vòng tâm", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                        Text("${fovRadiusDp.roundToInt()} dp", color = VeilColors.Accent, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
+                    Slider(
+                        value = fovRadiusDp,
+                        onValueChange = onFovRadiusChange,
+                        valueRange = 20f..180f,
+                        colors = SliderDefaults.colors(
+                            thumbColor = VeilColors.Accent,
+                            activeTrackColor = VeilColors.Accent,
+                            inactiveTrackColor = Color.White.copy(alpha = 0.16f),
+                        ),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .pointerInput(Unit) {
+                                awaitEachGesture {
+                                    awaitFirstDown(requireUnconsumed = false)
+                                    view.parent?.requestDisallowInterceptTouchEvent(true)
+                                }
+                            },
+                    )
+                }
+            }
         }
     }
 }

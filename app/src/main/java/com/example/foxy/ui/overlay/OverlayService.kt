@@ -154,6 +154,8 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner, ViewM
         hud.espEnabled    = stateFlow.value.eagleEyeEnabled
         hud.boxEnabled    = stateFlow.value.boxEnabled
         hud.radarEnabled  = stateFlow.value.radarEnabled
+        hud.fovEnabled    = stateFlow.value.fovEnabled
+        hud.fovRadiusDp   = stateFlow.value.fovRadiusDp
         hud.smoothEnabled = true
         hud.syncRenderLoop()
 
@@ -229,6 +231,15 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner, ViewM
                             // ═══ RADAR → bật/tắt độc lập ═══
                             stateFlow.update { it.copy(radarEnabled = checked) }
                             espHudView?.setRadar(checked)
+                        },
+                        onFovChange     = { checked ->
+                            // ═══ VÒNG TÂM (FOV) → bật/tắt độc lập ═══
+                            stateFlow.update { it.copy(fovEnabled = checked) }
+                            espHudView?.setFov(checked)
+                        },
+                        onFovRadiusChange = { radiusDp ->
+                            stateFlow.update { it.copy(fovRadiusDp = radiusDp) }
+                            espHudView?.setFovRadius(radiusDp)
                         },
                         widthScale      = widthScale,
                         heightScale     = heightScale,

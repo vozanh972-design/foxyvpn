@@ -24,6 +24,8 @@ class EspHudView(context: Context) : View(context) {
     // Các field giống bản gốc
     @Volatile var espEnabled   = false
     @Volatile var boxEnabled   = false
+    @Volatile var fovEnabled   = false
+    @Volatile var fovRadiusDp  = 60f
     @Volatile var smoothEnabled = true
     // Alpha = 255 (fully opaque) — gốc dùng opacity(100) = min(255, round(100*2.55)) = 255
     @Volatile var boxAlpha   = 255
@@ -40,7 +42,7 @@ class EspHudView(context: Context) : View(context) {
     @Volatile private var lastKnownLocalPlayer: EspEntityStore.Entity? = null
 
     private val isRenderActive: Boolean
-        get() = espEnabled || boxEnabled || radarEnabled
+        get() = espEnabled || boxEnabled || radarEnabled || fovEnabled
 
     // ─── Tốc độ render: target 60fps = 16ms, dùng Choreographer ──
     // postInvalidateOnAnimation() sync với vsync của màn hình thay vì invalidate() loop thô
@@ -66,11 +68,16 @@ class EspHudView(context: Context) : View(context) {
         }
 
         if (effectiveSnap != null) {
-            if (isRenderActive) drawEsp(canvas, effectiveSnap)
+            if (espEnabled || boxEnabled || radarEnabled) drawEsp(canvas, effectiveSnap)
         } else {
             smoothFrames.clear()
             poseFrames.clear()
             lastFrame = 0L
+        }
+
+        // Vòng tâm luôn căn giữa màn hình (hiển thị ngay cả khi chưa có snapshot để dễ căn chỉnh)
+        if (fovEnabled) {
+            drawFovCircle(canvas)
         }
     }
 
@@ -90,6 +97,18 @@ class EspHudView(context: Context) : View(context) {
     fun setRadar(on: Boolean) {
         radarEnabled = on
         syncRenderLoop()
+    }
+
+    /** Bật/tắt Vòng tâm (FOV) độc lập */
+    fun setFov(on: Boolean) {
+        fovEnabled = on
+        syncRenderLoop()
+    }
+
+    /** Cập nhật bán kính Vòng tâm (dp) */
+    fun setFovRadius(radiusDp: Float) {
+        fovRadiusDp = radiusDp.coerceIn(20f, 180f)
+        if (fovEnabled) invalidate()
     }
 
     fun syncRenderLoop() {
@@ -243,6 +262,20 @@ class EspHudView(context: Context) : View(context) {
         if (radarEnabled) {
             drawRadar(canvas, snapshot, W, H)
         }
+    }
+
+    // ─── drawFovCircle: vòng tròn luôn căn giữa màn hình ──────────
+
+    private fun drawFovCircle(canvas: Canvas) {
+        val cx = width * 0.5f
+        val cy = height * 0.5f
+        if (cx <= 0f || cy <= 0f) return
+        val r = dp(fovRadiusDp)
+
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = dp(1.2f)
+        paint.color = Color.argb(175, 255, 255, 255)
+        canvas.drawCircle(cx, cy, r, paint)
     }
 
     // ─── drawSilhouette → chỉ vẽ khung 4 góc khi boxEnabled = true ──
