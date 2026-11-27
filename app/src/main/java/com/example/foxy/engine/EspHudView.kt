@@ -23,6 +23,7 @@ class EspHudView(context: Context) : View(context) {
 
     // Các field giống bản gốc
     @Volatile var espEnabled   = false
+    @Volatile var boxEnabled   = false
     @Volatile var smoothEnabled = true
     // Alpha = 255 (fully opaque) — gốc dùng opacity(100) = min(255, round(100*2.55)) = 255
     @Volatile var boxAlpha   = 255
@@ -212,12 +213,7 @@ class EspHudView(context: Context) : View(context) {
         smoothFrames.keys.retainAll(seen)
     }
 
-    // ─── drawSilhouette → Arrow ESP kiểu Moco ────────────────────
-    // Thay toàn bộ skeleton bằng:
-    //   • Hình thoi/mũi tên nhỏ gọn ở đầu entity (như pin map)
-    //   • Vạch chỉ hướng từ center màn hình → entity
-    //   • Dot màu đặc tại đầu + chân
-    //   • Rất nhẹ → không lag, sync 60fps
+    // ─── drawSilhouette → chỉ vẽ khung 4 góc khi boxEnabled = true ──
 
     private fun drawSilhouette(
         canvas: Canvas, entity: EspEntityStore.Entity,
@@ -228,91 +224,36 @@ class EspHudView(context: Context) : View(context) {
         sLFOOT: FloatArray?, sRFOOT: FloatArray?,
         skelColor: Int, alpha: Int,
     ) {
-        if (sHEAD == null) return
+        if (!boxEnabled || sHEAD == null) return
         val hx = sHEAD[0]; val hy = sHEAD[1]
 
         // Foot position (dùng để tính chiều cao box)
-        val footL = sLFOOT ?: sRFOOT
-        val fy = footL?.get(1) ?: (hy + 80f)
+        val footL = sLFOOT ?: sRFOOT ?: return
+        val fy = footL[1]
 
-        val boxH = kotlin.math.abs(fy - hy).coerceAtLeast(20f)
+        val boxH   = kotlin.math.abs(fy - hy).coerceAtLeast(20f)
+        val boxW   = boxH * 0.42f
+        val left   = hx - boxW * 0.5f
+        val right  = hx + boxW * 0.5f
+        val top    = hy - dp(4f)
+        val bot    = fy + dp(2f)
+        val corner = (boxW * 0.22f).coerceIn(dp(4f), dp(12f))
 
-        // ── 1. Mũi tên hình thoi (diamond pin) tại đầu ─────────────
-        // Kích thước tỉ lệ theo khoảng cách (gần lớn hơn)
-        val pinR = (boxH * 0.14f).coerceIn(5f, 18f)
-
-        // Diamond: 4 đỉnh xung quanh đầu
-        val path = android.graphics.Path()
-        path.moveTo(hx,          hy - pinR * 1.5f)   // top
-        path.lineTo(hx + pinR,   hy)                  // right
-        path.lineTo(hx,          hy + pinR * 0.6f)    // bottom
-        path.lineTo(hx - pinR,   hy)                  // left
-        path.close()
-
-        // Fill màu team
-        paint.style = Paint.Style.FILL
-        paint.color = skelColor
-        canvas.drawPath(path, paint)
-
-        // Viền trắng mỏng
         paint.style = Paint.Style.STROKE
-        paint.strokeWidth = dp(1.2f)
-        paint.color = Color.argb((alpha * 0.7f).toInt(), 255, 255, 255)
-        canvas.drawPath(path, paint)
-
-        // ── 2. Dot nhỏ ở chân ───────────────────────────────────────
-        if (footL != null) {
-            paint.style = Paint.Style.FILL
-            paint.color = Color.argb((alpha * 0.6f).toInt(),
-                Color.red(skelColor), Color.green(skelColor), Color.blue(skelColor))
-            canvas.drawCircle(footL[0], footL[1], dp(2.5f), paint)
-        }
-
-        // ── 3. Vạch dọc nối đầu → chân (thay skeleton phức tạp) ────
-        paint.style = Paint.Style.STROKE
-        paint.strokeWidth = dp(1.5f)
-        paint.color = Color.argb((alpha * 0.45f).toInt(),
+        paint.strokeWidth = dp(1.4f)
+        paint.color = Color.argb((alpha * 0.85f).toInt(),
             Color.red(skelColor), Color.green(skelColor), Color.blue(skelColor))
-        val fx = footL?.get(0) ?: hx
-        canvas.drawLine(hx, hy + pinR * 0.6f, fx, fy, paint)
 
-        // ── 4. Shoulder bar ngang nếu đủ gần (< 60m) ───────────────
-        if (sLSHOULD != null && sRSHOULD != null) {
-            val shoulderWidth = kotlin.math.abs(sRSHOULD[0] - sLSHOULD[0])
-            if (shoulderWidth > dp(6f)) {
-                paint.strokeWidth = dp(1.8f)
-                paint.color = Color.argb((alpha * 0.6f).toInt(),
-                    Color.red(skelColor), Color.green(skelColor), Color.blue(skelColor))
-                canvas.drawLine(sLSHOULD[0], sLSHOULD[1], sRSHOULD[0], sRSHOULD[1], paint)
-            }
-        }
+        // Vẽ 4 góc (corner bracket style)
+        canvas.drawLine(left,  top,  left + corner,  top,  paint)   // top-left H
+        canvas.drawLine(left,  top,  left,  top + corner,  paint)   // top-left V
+        canvas.drawLine(right, top,  right - corner, top,  paint)   // top-right H
+        canvas.drawLine(right, top,  right, top + corner,  paint)   // top-right V
+        canvas.drawLine(left,  bot,  left + corner,  bot,  paint)   // bot-left H
+        canvas.drawLine(left,  bot,  left,  bot - corner,  paint)   // bot-left V
+        canvas.drawLine(right, bot,  right - corner, bot,  paint)   // bot-right H
+        canvas.drawLine(right, bot,  right, bot - corner,  paint)   // bot-right V
 
-        // ── 5. Box outline nhỏ gọn (corner-only style) ─────────────
-        if (footL != null) {
-            val boxW   = boxH * 0.42f
-            val left   = hx - boxW * 0.5f
-            val right  = hx + boxW * 0.5f
-            val top    = hy - pinR * 1.6f
-            val bot    = fy + dp(2f)
-            val corner = (boxW * 0.2f).coerceIn(dp(4f), dp(12f))
-
-            paint.style = Paint.Style.STROKE
-            paint.strokeWidth = dp(1.4f)
-            paint.color = Color.argb((alpha * 0.75f).toInt(),
-                Color.red(skelColor), Color.green(skelColor), Color.blue(skelColor))
-
-            // Vẽ 4 góc (corner bracket style như Moco)
-            canvas.drawLine(left,  top,  left + corner,  top,  paint)   // top-left H
-            canvas.drawLine(left,  top,  left,  top + corner,  paint)   // top-left V
-            canvas.drawLine(right, top,  right - corner, top,  paint)   // top-right H
-            canvas.drawLine(right, top,  right, top + corner,  paint)   // top-right V
-            canvas.drawLine(left,  bot,  left + corner,  bot,  paint)   // bot-left H
-            canvas.drawLine(left,  bot,  left,  bot - corner,  paint)   // bot-left V
-            canvas.drawLine(right, bot,  right - corner, bot,  paint)   // bot-right H
-            canvas.drawLine(right, bot,  right, bot - corner,  paint)   // bot-right V
-        }
-
-        // Reset
         paint.strokeCap = Paint.Cap.BUTT
     }
 

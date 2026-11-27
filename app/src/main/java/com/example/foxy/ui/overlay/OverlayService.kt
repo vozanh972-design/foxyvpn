@@ -152,6 +152,7 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner, ViewM
         val hud = EspHudView(this)
         // Lấy state hiện tại
         hud.espEnabled    = stateFlow.value.eagleEyeEnabled
+        hud.boxEnabled    = stateFlow.value.boxEnabled
         hud.smoothEnabled = true
 
         val espParams = WindowManager.LayoutParams(
@@ -216,6 +217,11 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner, ViewM
                             // ═══ MẮT THẦN → bật/tắt EspHudView ═══
                             stateFlow.update { it.copy(eagleEyeEnabled = checked) }
                             if (checked) espHudView?.enable() else espHudView?.disable()
+                        },
+                        onBoxChange     = { checked ->
+                            // ═══ KHUNG 4 CẠNH (BOX) ═══
+                            stateFlow.update { it.copy(boxEnabled = checked) }
+                            espHudView?.boxEnabled = checked
                         },
                         widthScale      = widthScale,
                         heightScale     = heightScale,
