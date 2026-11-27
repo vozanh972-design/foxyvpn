@@ -438,9 +438,15 @@ private fun EagleEyeContent(
             Modifier.weight(1f).fillMaxWidth().clip(RoundedCornerShape(18.dp))
                 .background(if (anyActive) Color.Black.copy(alpha = 0.25f) else Color.White.copy(alpha = 0.04f))
                 .border(1.dp, Color.White.copy(alpha = if (anyActive) 0.10f else 0.04f), RoundedCornerShape(18.dp))
+                .pointerInput(Unit) {
+                    awaitEachGesture {
+                        awaitFirstDown(requireUnconsumed = false)
+                        view.parent?.requestDisallowInterceptTouchEvent(true)
+                    }
+                }
                 .verticalScroll(rememberScrollState())
-                .padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+                .padding(10.dp),
+            verticalArrangement = Arrangement.spacedBy(7.dp),
         ) {
             EagleEyeOptionRow(
                 title = "Khung 4 cạnh (Box)",
@@ -512,7 +518,7 @@ private fun EagleEyeOptionRow(
     onToggle: (Boolean) -> Unit,
 ) {
     Row(
-        Modifier.fillMaxWidth().height(48.dp).clip(RoundedCornerShape(14.dp))
+        Modifier.fillMaxWidth().height(42.dp).clip(RoundedCornerShape(14.dp))
             .background(CardBg)
             .toggleable(value = checked, role = Role.Switch, onValueChange = onToggle)
             .padding(horizontal = 14.dp),
