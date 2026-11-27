@@ -39,11 +39,14 @@ class EspHudView(context: Context) : View(context) {
     // Cache localPlayer cuối cùng biết — giúp ESP không tắt lúc chết/hồi sinh
     @Volatile private var lastKnownLocalPlayer: EspEntityStore.Entity? = null
 
+    private val isRenderActive: Boolean
+        get() = espEnabled || boxEnabled
+
     // ─── Tốc độ render: target 60fps = 16ms, dùng Choreographer ──
     // postInvalidateOnAnimation() sync với vsync của màn hình thay vì invalidate() loop thô
     private val frameCallback: android.view.Choreographer.FrameCallback =
         android.view.Choreographer.FrameCallback { _ ->
-            if (espEnabled) {
+            if (isRenderActive) {
                 invalidate()
                 android.view.Choreographer.getInstance().postFrameCallback(frameCallback)
             }
@@ -63,7 +66,7 @@ class EspHudView(context: Context) : View(context) {
         }
 
         if (effectiveSnap != null) {
-            if (espEnabled) drawEsp(canvas, effectiveSnap)
+            if (isRenderActive) drawEsp(canvas, effectiveSnap)
         } else {
             smoothFrames.clear()
             poseFrames.clear()
@@ -71,17 +74,33 @@ class EspHudView(context: Context) : View(context) {
         }
     }
 
-    /** Bật ESP — sync vsync 60fps thay vì invalidate() loop thô */
-    fun enable() {
-        espEnabled = true
-        android.view.Choreographer.getInstance().postFrameCallback(frameCallback)
+    /** Bật/tắt Mắt thần ([ID] Xm + HP + chấm rìa) độc lập */
+    fun setEsp(on: Boolean) {
+        espEnabled = on
+        syncRenderLoop()
     }
 
-    /** Tắt ESP */
-    fun disable() {
-        espEnabled = false
-        android.view.Choreographer.getInstance().removeFrameCallback(frameCallback)
+    /** Bật/tắt Khung 4 cạnh (Box) độc lập */
+    fun setBox(on: Boolean) {
+        boxEnabled = on
+        syncRenderLoop()
     }
+
+    fun syncRenderLoop() {
+        val ch = android.view.Choreographer.getInstance()
+        ch.removeFrameCallback(frameCallback)
+        if (isRenderActive) {
+            ch.postFrameCallback(frameCallback)
+        } else {
+            invalidate()
+        }
+    }
+
+    /** Bật ESP — giữ tương thích */
+    fun enable() = setEsp(true)
+
+    /** Tắt ESP — giữ tương thích */
+    fun disable() = setEsp(false)
 
     // ─── drawEsp: Skeleton ESP posture-aware — xuyên tường, xa=xanh, gần=đỏ ──
 
@@ -185,7 +204,7 @@ class EspHudView(context: Context) : View(context) {
             }
 
             if (sHEAD == null) {
-                drawEdge(canvas, snapshot, entity, dist, W, H)
+                if (espEnabled) drawEdge(canvas, snapshot, entity, dist, W, H)
                 continue
             }
             val headScrX = sHEAD[0]
@@ -196,17 +215,20 @@ class EspHudView(context: Context) : View(context) {
             val footScrY = sLFOOT?.get(1) ?: (sRFOOT?.get(1) ?: headScrY + 80f)
             smoothFrames[entity.id] = floatArrayOf(footScrX, footScrY, headScrX, headScrY)
 
-            // ══ SILHOUETTE ĐẶC (filled human body shape) ══════════
-            // Thay vì vẽ đường xương, vẽ hình người filled giống ảnh tham khảo
-            drawSilhouette(canvas, entity,
-                sHEAD, sNECK, sCHEST, sBELLY, sPELVIS,
-                sLSHOULD, sRSHOULD, sLHAND, sRHAND,
-                sLFOOT, sRFOOT,
-                skelColor, alpha)
+            // ══ KHUNG 4 CẠNH (chỉ vẽ khi boxEnabled = true) ══════════
+            if (boxEnabled) {
+                drawSilhouette(canvas, entity,
+                    sHEAD, sNECK, sCHEST, sBELLY, sPELVIS,
+                    sLSHOULD, sRSHOULD, sLHAND, sRHAND,
+                    sLFOOT, sRFOOT,
+                    skelColor, alpha)
+            }
 
-            // ══ NAMEPLATE GỌN (đẩy cao trên đầu, không che tầm ngắm) ═
-            val footRef2 = sLFOOT ?: sRFOOT
-            drawNameplate(canvas, entity, headScrX, headScrY - dp(22f), dist, skelColor, isTeammate, footRef2)
+            // ══ MẮT THẦN: [ID] Xm + HP bar (chỉ vẽ khi espEnabled = true) ═
+            if (espEnabled) {
+                val footRef2 = sLFOOT ?: sRFOOT
+                drawNameplate(canvas, entity, headScrX, headScrY - dp(22f), dist, skelColor, isTeammate, footRef2)
+            }
         }
 
         poseFrames.keys.retainAll(seen)
