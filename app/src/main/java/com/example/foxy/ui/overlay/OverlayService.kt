@@ -70,7 +70,7 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner, ViewM
     private var expanded    by mutableStateOf(false)
     private var panelScale  by mutableFloatStateOf(PANEL_SCALE)
     private var widthScale  by mutableFloatStateOf(0.75f)
-    private var heightScale by mutableFloatStateOf(1.10f)
+    private var heightScale by mutableFloatStateOf(1.18f)
     private var tab         by mutableStateOf(OverlayTab.Home)
     private var boost       by mutableStateOf(BoostState())
     private var overlayAlpha by mutableFloatStateOf(1.0f)

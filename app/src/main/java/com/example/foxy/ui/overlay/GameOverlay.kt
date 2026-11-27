@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
@@ -134,7 +135,7 @@ fun GameOverlay(
     onFovRadiusChange: (Float) -> Unit = {},
     onLineChange: (Boolean) -> Unit = {},
     widthScale: Float = 0.75f,
-    heightScale: Float = 1.10f,
+    heightScale: Float = 1.18f,
     onSizeChange: (Float, Float) -> Unit = { _, _ -> },
     modifier: Modifier = Modifier,
     panelScale: Float = PANEL_SCALE,
@@ -518,10 +519,10 @@ private fun EagleEyeOptionRow(
     onToggle: (Boolean) -> Unit,
 ) {
     Row(
-        Modifier.fillMaxWidth().height(42.dp).clip(RoundedCornerShape(14.dp))
+        Modifier.fillMaxWidth().heightIn(min = 46.dp).clip(RoundedCornerShape(14.dp))
             .background(CardBg)
             .toggleable(value = checked, role = Role.Switch, onValueChange = onToggle)
-            .padding(horizontal = 14.dp),
+            .padding(horizontal = 14.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
@@ -558,7 +559,7 @@ private fun SettingsContent(
                 fontWeight = FontWeight.SemiBold,
                 modifier = Modifier
                     .clip(RoundedCornerShape(10.dp))
-                    .clickable(role = Role.Button) { onSizeChange(0.75f, 1.10f) }
+                    .clickable(role = Role.Button) { onSizeChange(0.75f, 1.18f) }
                     .padding(horizontal = 8.dp, vertical = 3.dp),
             )
         }
