@@ -128,6 +128,7 @@ fun GameOverlay(
     onTabSelected: (OverlayTab) -> Unit = {},
     boost: BoostState = BoostState(),
     onBoostChange: (BoostState) -> Unit = {},
+    onTeleportTrigger: () -> Unit = {},
     onEagleEyeChange: (Boolean) -> Unit = {},
     onBoxChange: (Boolean) -> Unit = {},
     onRadarChange: (Boolean) -> Unit = {},
@@ -168,7 +169,7 @@ fun GameOverlay(
                 val content = Modifier.weight(1f).fillMaxWidth()
                 when (tab) {
                     OverlayTab.Home -> HomeContent(state, onDisconnect, onPriorityChange, onServerClick, onLanguageClick, content)
-                    OverlayTab.Boost -> BoostContent(boost, onBoostChange, content)
+                    OverlayTab.Boost -> BoostContent(boost, onBoostChange, onTeleportTrigger, content)
                     OverlayTab.EagleEye -> EagleEyeContent(
                         enabled = state.eagleEyeEnabled,
                         boxEnabled = state.boxEnabled,

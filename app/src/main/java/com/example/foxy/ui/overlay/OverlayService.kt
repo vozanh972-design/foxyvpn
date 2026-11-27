@@ -41,6 +41,7 @@ import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import com.example.foxy.engine.AimCombatEngine
 import com.example.foxy.engine.EspHudView
 import com.example.foxy.engine.FreezeController
+import com.example.foxy.engine.NetworkFeatures
 import com.example.foxy.ui.theme.VeilTheme
 import com.example.foxy.vpn.FreefireVpnService
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -222,11 +223,30 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner, ViewM
                         boost           = boost,
                         onBoostChange   = { newBoost ->
                             boost = newBoost
-                            // ═══ CHẾ ĐỘ GHIM (Khớp chuẩn PlayerColliderChecker.HitPart từ Core_Keo_Tam) ═══
-                            AimCombatEngine.configure(
-                                enabled = newBoost.pinEnabled,
-                                bone = newBoost.aimTarget.boneId,
+                            val anyFreeze = newBoost.manualFreeze || newBoost.autoFreeze ||
+                                newBoost.aimLag || newBoost.scopeFreeze
+                            FreezeController.configure(
+                                available = anyFreeze,
+                                manual = newBoost.manualFreeze,
+                                auto = newBoost.autoFreeze,
+                                aim = newBoost.aimLag,
+                                scope = newBoost.scopeFreeze,
                             )
+                            NetworkFeatures.configure(
+                                magnet = newBoost.magnet,
+                                ghost = newBoost.ghost,
+                                under = newBoost.under,
+                                wall = newBoost.wall,
+                                teleport = newBoost.teleport,
+                                speed = newBoost.speed,
+                            )
+                            AimCombatEngine.configure(
+                                enabled = newBoost.magnet,
+                                bone = AimCombatEngine.HITPART_HEAD,
+                            )
+                        },
+                        onTeleportTrigger = {
+                            NetworkFeatures.nextTeleport()
                         },
                         onEagleEyeChange= { checked ->
                             // ═══ MẮT THẦN → bật/tắt [ID] Xm + HP độc lập ═══
