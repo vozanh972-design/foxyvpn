@@ -88,7 +88,7 @@ data class GameOverlayState(
     val signalLevel: Int = 3,
     val pingMs: Int = 38,
     val pingHistory: List<Int> = listOf(41, 37, 45, 33, 39, 31, 36, 34, 38),
-    val daysLeft: Int = 28,
+    val expiryLabel: String = "—",
     val downloadMbps: Float = 13.5f,
     val uploadMbps: Float = 15.5f,
     val gamePriority: Boolean = true,
@@ -618,7 +618,7 @@ private fun StatsCard(state: GameOverlayState, modifier: Modifier = Modifier) {
         modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(CardBg).padding(horizontal = 14.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.Center,
     ) {
-        StatRow("Còn lại", "${state.daysLeft} ngày")
+        StatRow("Còn lại", state.expiryLabel)
         StatRow("Tốc độ tải xuống", mbps(state.downloadMbps))
         StatRow("Tốc độ tải lên", mbps(state.uploadMbps))
     }

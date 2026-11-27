@@ -372,11 +372,16 @@ private fun SettingRow(title: String, subtitle: String, checked: Boolean, onChec
 private fun AccountContent(userKey: String?) {
     val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
+    val keyStore = remember(context) { com.example.foxy.data.KeyStore(context) }
 
-    val rawKey = userKey?.ifBlank { null } ?: "ABCD1234EFGH5678"
+    val rawKey = userKey?.ifBlank { null } ?: (keyStore.get() ?: "")
     val displayKey = remember(rawKey) {
-        if (rawKey.length >= 16) "${rawKey.take(4)}-••••-••••-${rawKey.takeLast(4)}" else rawKey
+        if (rawKey.isEmpty()) "Chưa kích hoạt"
+        else if (rawKey.length >= 16) "${rawKey.take(4)}-••••-••••-${rawKey.takeLast(4)}"
+        else rawKey
     }
+    val isVip = remember(rawKey) { keyStore.isVip() }
+    val expiryDetail = remember(rawKey) { keyStore.formatExpiryDetail() }
 
     Column(
         modifier = Modifier.fillMaxWidth(),
@@ -407,7 +412,7 @@ private fun AccountContent(userKey: String?) {
 
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "Gói Premium",
+                    text = if (isVip) "Gói VIP" else "Gói Miễn phí",
                     fontSize = 20.sp,
                     fontWeight = FontWeight.ExtraBold,
                     color = FoxyColors.Ink,
@@ -517,7 +522,7 @@ private fun AccountContent(userKey: String?) {
                 )
                 Spacer(Modifier.height(3.dp))
                 Text(
-                    text = "03/12/2026 · còn 28 ngày",
+                    text = expiryDetail,
                     fontSize = 15.5.sp,
                     fontWeight = FontWeight.Bold,
                     color = FoxyColors.Ink,

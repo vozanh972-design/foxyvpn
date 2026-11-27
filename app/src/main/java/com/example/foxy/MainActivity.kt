@@ -165,7 +165,33 @@ class MainActivity : ComponentActivity() {
                                     var isDarkTheme by remember { mutableStateOf(keyStore.isDarkTheme()) }
                                     var currentLang by remember { mutableStateOf(keyStore.getLanguage()) }
                                     val currentKey = remember(showSettings, showAccount, isActivated) { keyStore.get() ?: "" }
-                                    val isVip = currentKey.contains("VIP", ignoreCase = true) || currentKey.contains("PRO", ignoreCase = true)
+                                    val isVip = remember(showSettings, showAccount, isActivated) { keyStore.isVip() }
+
+                                    LaunchedEffect(isActivated) {
+                                        val savedKey = keyStore.get()
+                                        if (isActivated && !savedKey.isNullOrBlank()) {
+                                            val client = com.example.foxy.data.ResilientLicenseClient()
+                                            val res = client.verify(
+                                                endpointUrl = com.example.foxy.data.ResilientLicenseClient.CHECK_KEY_URL,
+                                                licenseKey = savedKey,
+                                                deviceSignature = keyStore.getOrCreateDeviceSignature(),
+                                            )
+                                            when (res.status) {
+                                                com.example.foxy.data.ResilientLicenseClient.LicenseStatus.VALID -> {
+                                                    keyStore.save(
+                                                        key = res.key.ifBlank { savedKey },
+                                                        type = res.type,
+                                                        expiresAt = res.expiresAt,
+                                                    )
+                                                }
+                                                com.example.foxy.data.ResilientLicenseClient.LicenseStatus.INVALID -> {
+                                                    keyStore.clear()
+                                                    isActivated = false
+                                                }
+                                                else -> Unit
+                                            }
+                                        }
+                                    }
 
                                     VeilTheme {
                                         androidx.compose.foundation.layout.Box(modifier = Modifier.fillMaxSize()) {
@@ -215,6 +241,7 @@ class MainActivity : ComponentActivity() {
                                                     2 -> {
                                                         com.example.foxy.ui.profile.ProfileRoute(
                                                             licenseKey = currentKey,
+                                                            isVip = isVip,
                                                             onBack = { showAccount = false },
                                                             onLogout = {
                                                                 keyStore.clear()

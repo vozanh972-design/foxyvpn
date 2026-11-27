@@ -19,12 +19,61 @@ class KeyStore(context: Context) {
 
     fun get(): String? = prefs.getString(KEY_LICENSE, null)
 
-    fun save(key: String) {
+    fun getType(): String = prefs.getString(KEY_TYPE, "free") ?: "free"
+
+    fun isVip(): Boolean = getType().equals("vip", ignoreCase = true)
+
+    fun getExpiresAt(): String = prefs.getString(KEY_EXPIRES_AT, "") ?: ""
+
+    fun save(key: String, type: String = "free", expiresAt: String = "") {
         val signature = getOrCreateDeviceSignature()
         prefs.edit()
             .putString(KEY_LICENSE, key)
+            .putString(KEY_TYPE, type)
+            .putString(KEY_EXPIRES_AT, expiresAt)
             .putString(KEY_ACTIVATED_SIGNATURE, signature)
             .apply()
+    }
+
+    /**
+     * Tính thời gian còn lại từ `expires_at` do server trả về ("yyyy-MM-dd HH:mm:ss" hoặc "Vĩnh viễn").
+     */
+    fun formatRemainingTime(): String {
+        val exp = getExpiresAt().trim()
+        if (exp.isEmpty()) return "—"
+        if (exp.equals("Vĩnh viễn", ignoreCase = true)) return "Vĩnh viễn"
+        val expMs = parseExpiryMillis(exp) ?: return exp
+        val diffMs = expMs - System.currentTimeMillis()
+        if (diffMs <= 0L) return "Hết hạn"
+        val totalMinutes = diffMs / 60_000L
+        val days = totalMinutes / (60L * 24L)
+        if (days >= 1L) return "$days ngày"
+        val hours = totalMinutes / 60L
+        if (hours >= 1L) return "$hours giờ"
+        return "${totalMinutes.coerceAtLeast(1L)} phút"
+    }
+
+    /**
+     * Chuỗi hiển thị chi tiết cho ngăn kéo Gói của tôi: "dd/MM/yyyy · còn X ngày/giờ" hoặc "Vĩnh viễn".
+     */
+    fun formatExpiryDetail(): String {
+        val exp = getExpiresAt().trim()
+        if (exp.isEmpty()) return "Chưa có thông tin"
+        if (exp.equals("Vĩnh viễn", ignoreCase = true)) return "Vĩnh viễn"
+        val expMs = parseExpiryMillis(exp) ?: return exp
+        val dateStr = java.text.SimpleDateFormat("dd/MM/yyyy HH:mm", java.util.Locale.getDefault())
+            .format(java.util.Date(expMs))
+        val remaining = formatRemainingTime()
+        return if (remaining == "Hết hạn") "$dateStr · Đã hết hạn" else "$dateStr · còn $remaining"
+    }
+
+    private fun parseExpiryMillis(exp: String): Long? {
+        return try {
+            java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US)
+                .parse(exp)?.time
+        } catch (_: Exception) {
+            null
+        }
     }
 
     /**
@@ -54,6 +103,8 @@ class KeyStore(context: Context) {
     fun clear() {
         prefs.edit()
             .remove(KEY_LICENSE)
+            .remove(KEY_TYPE)
+            .remove(KEY_EXPIRES_AT)
             .remove(KEY_ACTIVATED_SIGNATURE)
             .apply()
     }
@@ -76,6 +127,8 @@ class KeyStore(context: Context) {
 
     companion object {
         private const val KEY_LICENSE = "license_key"
+        private const val KEY_TYPE = "license_type"
+        private const val KEY_EXPIRES_AT = "license_expires_at"
         private const val KEY_DEVICE_SIGNATURE = "lifetime_device_signature"
         private const val KEY_ACTIVATED_SIGNATURE = "activated_with_signature"
         private const val KEY_DARK_THEME = "dark_theme"

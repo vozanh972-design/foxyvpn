@@ -135,6 +135,11 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner, ViewM
         if (!Settings.canDrawOverlays(this)) { stopSelf(); return }
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
 
+        // Đồng bộ thời hạn key thật từ KeyStore lên bảng thông tin nổi
+        stateFlow.update {
+            it.copy(expiryLabel = com.example.foxy.data.KeyStore(this).formatRemainingTime())
+        }
+
         // Đăng ký nhận broadcast trạng thái VPN để đồng bộ nút Bật/Tắt
         val filter = android.content.IntentFilter(FreefireVpnService.BROADCAST_STATE)
         ContextCompat.registerReceiver(this, vpnStateReceiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED)

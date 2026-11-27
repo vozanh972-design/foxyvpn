@@ -30,6 +30,8 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -60,6 +62,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.foxy.data.ResilientLicenseClient
 
 // ---------- Màu chuẩn phong cách 1.1.1.1 Cloudflare ----------
 private val BgPaper = Color(0xFFFFFFFF)
@@ -68,9 +71,7 @@ private val Ink2 = Color(0xFF757575)
 private val LineSoft = Color(0xFFEBEAE6)
 private val CardShadow = Color(0x331E0A3C)
 private val PlaceholderGrey = Color(0xFF9A9D98)
-
-// Key hợp lệ: 3 nhóm, mỗi nhóm 4 ký tự chữ hoặc số, nối bằng gạch ngang
-private val KEY_REGEX = Regex("^[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$")
+private val ErrorRed = Color(0xFFD93025)
 
 // Gradient header: cam -> hồng san hô -> tím -> xanh tím
 private val HeroStops: Array<Pair<Float, Color>> = arrayOf(
@@ -149,18 +150,11 @@ private val BackIcon: ImageVector by lazy {
     )
 }
 
-/** Chuẩn hoá khi gõ: chỉ giữ chữ và số, viết hoa, tối đa 12 ký tự, tự thêm gạch sau mỗi 4 ký tự. */
-private fun formatKey(input: String): String =
-    input.uppercase()
-        .filter { it in 'A'..'Z' || it in '0'..'9' }
-        .take(12)
-        .chunked(4)
-        .joinToString("-")
-
 /**
  * Màn hình nhập key chính:
  * - Mặc định hiển thị IntroScreen.
- * - Khi bấm "Tôi đã có key" hoặc "Lấy key" -> chuyển sang EnterKeyScreen chuẩn mẫu.
+ * - "Lấy key": mở thẳng URL ẩn https://lunex.io.vn/api/mykey.php bằng trình duyệt.
+ * - "Tôi đã có key": chuyển sang EnterKeyScreen để kiểm tra qua check.php.
  */
 @Composable
 fun KeyScreen(
@@ -169,17 +163,23 @@ fun KeyScreen(
     viewModel: KeyViewModel = viewModel(),
 ) {
     val context = LocalContext.current
+    val uiState by viewModel.state.collectAsState()
     var showEnterKey by remember { mutableStateOf(false) }
+
+    LaunchedEffect(uiState.activated) {
+        if (uiState.activated) {
+            onActivated()
+        }
+    }
 
     Crossfade(targetState = showEnterKey, label = "KeyScreenTransition") { inEnterKey ->
         if (inEnterKey) {
             EnterKeyScreen(
+                isLoading = uiState.isLoading,
+                errorMessage = uiState.error,
                 onBack = { showEnterKey = false },
-                onApply = { key ->
-                    viewModel.onKeyChange(key)
-                    viewModel.onActivate()
-                    onActivated()
-                },
+                onValueEdited = { viewModel.onKeyChange(it) },
+                onApply = { key -> viewModel.onActivate(key) },
             )
         } else {
             IntroScreen(
@@ -199,7 +199,11 @@ fun KeyScreen(
                     }
                 },
                 onGetKey = {
-                    showEnterKey = true
+                    runCatching {
+                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(ResilientLicenseClient.GET_KEY_URL))
+                        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        context.startActivity(intent)
+                    }
                 },
                 onHaveKey = {
                     showEnterKey = true
@@ -393,17 +397,20 @@ private fun IntroFooter(onGetKey: () -> Unit, onHaveKey: () -> Unit) {
 // ---------- Màn hình 2: EnterKeyScreen ----------
 @Composable
 fun EnterKeyScreen(
+    isLoading: Boolean = false,
+    errorMessage: String? = null,
     onBack: () -> Unit = {},
+    onValueEdited: (String) -> Unit = {},
     onApply: (String) -> Unit = {},
 ) {
     var value by remember { mutableStateOf("") }
-    val valid = KEY_REGEX.matches(value)
+    val valid = value.trim().isNotEmpty() && !isLoading
     val keyboard = LocalSoftwareKeyboardController.current
 
     fun apply() {
         if (!valid) return
         keyboard?.hide()
-        onApply(value)
+        onApply(value.trim())
     }
 
     Column(
@@ -414,7 +421,7 @@ fun EnterKeyScreen(
     ) {
         // Nút quay lại
         IconButton(
-            onClick = onBack,
+            onClick = { if (!isLoading) onBack() },
             modifier = Modifier
                 .offset(x = (-8).dp)
                 .padding(top = 4.dp),
@@ -439,28 +446,34 @@ fun EnterKeyScreen(
             )
 
             Text(
-                text = "Nhập key để nhận 5 giờ",
+                text = "Nhập key để kích hoạt",
                 modifier = Modifier.padding(top = 14.dp),
                 color = Ink,
                 fontSize = 24.sp,
                 fontWeight = FontWeight.Normal,
             )
 
-            // Ô nhập key
+            // Ô nhập key (giữ nguyên định dạng key từ server, không tự cắt/sửa)
             BasicTextField(
                 value = value,
-                onValueChange = { value = formatKey(it) },
+                onValueChange = {
+                    if (!isLoading) {
+                        value = it
+                        onValueEdited(it)
+                    }
+                },
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(top = 30.dp)
                     .height(60.dp),
                 textStyle = TextStyle(
                     color = Ink,
-                    fontSize = 26.sp,
-                    letterSpacing = 3.sp,
+                    fontSize = 22.sp,
+                    letterSpacing = 1.5.sp,
                     textAlign = TextAlign.Center,
                 ),
                 singleLine = true,
+                enabled = !isLoading,
                 keyboardOptions = KeyboardOptions(
                     capitalization = KeyboardCapitalization.Characters,
                     keyboardType = KeyboardType.Ascii,
@@ -475,10 +488,9 @@ fun EnterKeyScreen(
                     ) {
                         if (value.isEmpty()) {
                             Text(
-                                text = "XXXX - XXXX - XXXX",
+                                text = "Nhập mã key của bạn",
                                 color = PlaceholderGrey,
-                                fontSize = 26.sp,
-                                letterSpacing = 3.sp,
+                                fontSize = 20.sp,
                                 textAlign = TextAlign.Center,
                             )
                         }
@@ -492,15 +504,15 @@ fun EnterKeyScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(1.5.dp)
-                    .background(Ink),
+                    .background(if (errorMessage != null) ErrorRed else Ink),
             )
 
             Text(
-                text = if (valid) "" else "Gồm 12 ký tự, chia thành 3 nhóm.",
+                text = errorMessage ?: "Hệ thống sẽ xác thực key trực tiếp với máy chủ.",
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(top = 12.dp),
-                color = Ink2,
+                color = if (errorMessage != null) ErrorRed else Ink2,
                 fontSize = 13.sp,
                 textAlign = TextAlign.Center,
             )
@@ -508,7 +520,7 @@ fun EnterKeyScreen(
 
         Spacer(Modifier.weight(1f))
 
-        // Nút Áp dụng: sáng khi key đủ định dạng, mờ khi chưa đủ
+        // Nút Áp dụng: gửi lên server check.php
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -522,7 +534,7 @@ fun EnterKeyScreen(
             contentAlignment = Alignment.Center,
         ) {
             Text(
-                text = "Áp dụng",
+                text = if (isLoading) "Đang kiểm tra..." else "Áp dụng",
                 color = Color.White,
                 fontSize = 16.sp,
                 fontWeight = FontWeight.Medium,

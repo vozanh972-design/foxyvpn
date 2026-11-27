@@ -66,6 +66,7 @@ private val BackArrowIcon: ImageVector by lazy {
 fun ProfileRoute(
     viewModel: ProfileViewModel = viewModel(),
     licenseKey: String = "",
+    isVip: Boolean = false,
     onBack: () -> Unit = {},
     onTabSelected: (HomeTab) -> Unit = {},
     onUpgradeClick: () -> Unit = {},
@@ -76,7 +77,6 @@ fun ProfileRoute(
     showBottomNav: Boolean = false,
 ) {
     val state by viewModel.state.collectAsState()
-    val isVip = licenseKey.contains("VIP", ignoreCase = true) || licenseKey.contains("PRO", ignoreCase = true)
 
     ProfileScreen(
         state = state,
@@ -191,7 +191,7 @@ fun ProfileScreen(
                     color = Ink,
                 )
                 Text(
-                    text = licenseKey.ifEmpty { "FREE-KEY-DEFAULT" },
+                    text = licenseKey.ifEmpty { "Chưa kích hoạt" },
                     fontSize = 14.sp,
                     color = Ink2,
                 )
