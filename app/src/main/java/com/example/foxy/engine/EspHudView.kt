@@ -38,14 +38,7 @@ class EspHudView(context: Context) : View(context) {
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val text  = Paint(Paint.ANTI_ALIAS_FLAG)
     private val poseFrames:   HashMap<Int, EspPoseInterpolator> = HashMap()
-    private val smoothFrames: HashMap<Int, FloatArray>          = HashMap()
     private var lastFrame = 0L
-
-    // Camera & localPlayer smoothing (giảm giật khi xoay tâm ở 60fps)
-    private var camReady = false
-    private var camLpX = 0f; private var camLpY = 0f; private var camLpZ = 0f
-    private var camDirX = 0f; private var camDirY = 0f; private var camDirZ = 1f
-    private var camYaw = 0f
 
     // Cache localPlayer cuối cùng biết — giúp ESP không tắt lúc chết/hồi sinh
     @Volatile private var lastKnownLocalPlayer: EspEntityStore.Entity? = null
@@ -79,9 +72,7 @@ class EspHudView(context: Context) : View(context) {
         if (effectiveSnap != null) {
             if (espEnabled || boxEnabled || radarEnabled || lineEnabled) drawEsp(canvas, effectiveSnap)
         } else {
-            smoothFrames.clear()
             poseFrames.clear()
-            camReady = false
             lastFrame = 0L
         }
 
@@ -162,46 +153,17 @@ class EspHudView(context: Context) : View(context) {
         if (W <= 0f || H <= 0f) return
 
         val now = System.currentTimeMillis()
-        val frameDtSec = if (lastFrame > 0L) ((now - lastFrame).coerceIn(1L, 100L) / 1000f) else 0.016f
         lastFrame = now
 
-        // Làm mượt localPlayer & hướng camera theo 60fps để xoay tâm không giật box
-        val lpRaw = snapshot.localPlayer
-        val renderSnap = if (lpRaw != null) {
-            val camAlpha = 1f - exp(-frameDtSec * 28f)
-            if (!camReady || abs(lpRaw.x - camLpX) > 25f || abs(lpRaw.z - camLpZ) > 25f) {
-                camLpX = lpRaw.x; camLpY = lpRaw.y; camLpZ = lpRaw.z
-                camDirX = snapshot.dirX; camDirY = snapshot.dirY; camDirZ = snapshot.dirZ
-                camYaw = snapshot.yawRadians
-                camReady = true
-            } else {
-                camLpX += (lpRaw.x - camLpX) * camAlpha
-                camLpY += (lpRaw.y - camLpY) * camAlpha
-                camLpZ += (lpRaw.z - camLpZ) * camAlpha
-                camDirX += (snapshot.dirX - camDirX) * camAlpha
-                camDirY += (snapshot.dirY - camDirY) * camAlpha
-                camDirZ += (snapshot.dirZ - camDirZ) * camAlpha
-                camYaw = atan2(camDirX.toDouble(), camDirZ.toDouble()).toFloat()
-            }
-            snapshot.copy(
-                localPlayer = lpRaw.copy(x = camLpX, y = camLpY, z = camLpZ),
-                yawRadians = camYaw,
-                dirX = camDirX,
-                dirY = camDirY,
-                dirZ = camDirZ,
-            )
-        } else snapshot
-
         val seen = HashSet<Int>()
-        val localTeam = renderSnap.localPlayer?.team ?: -1
-        val boxAlphaSmooth = 1f - exp(-frameDtSec * 26f)
+        val localTeam = snapshot.localPlayer?.team ?: -1
 
-        for (entity in renderSnap.entities) {
-            val dx   = entity.x - (renderSnap.localPlayer?.x ?: 0f)
-            val dy   = entity.y - (renderSnap.localPlayer?.y ?: 0f)
-            val dz   = entity.z - (renderSnap.localPlayer?.z ?: 0f)
+        for (entity in snapshot.entities) {
+            val dx   = entity.x - (snapshot.localPlayer?.x ?: 0f)
+            val dy   = entity.y - (snapshot.localPlayer?.y ?: 0f)
+            val dz   = entity.z - (snapshot.localPlayer?.z ?: 0f)
             val dist = kotlin.math.sqrt(dx * dx + dy * dy + dz * dz)
-            if (dist < 0.5f) continue
+            if (dist < 0.15f) continue
 
             // Smooth interpolation vị trí
             val interp = poseFrames.getOrPut(entity.id) { EspPoseInterpolator() }
@@ -231,9 +193,9 @@ class EspHudView(context: Context) : View(context) {
             val shW = if (entity.isProne) 0.15f else 0.3f
             val hdW = if (entity.isProne) 0.3f  else 0.5f
 
-            // Helper project (dùng renderSnap đã làm mượt camera)
+            // Helper project (chiếu thẳng 3D -> 2D tức thì theo góc camera mới nhất)
             fun proj(wx: Float, wy: Float, wz: Float): FloatArray? =
-                PacketProjection.project(W, H, renderSnap, wx, wy, wz)?.let {
+                PacketProjection.project(W, H, snapshot, wx, wy, wz)?.let {
                     floatArrayOf(it[0], it[1])
                 }
 
@@ -291,45 +253,26 @@ class EspHudView(context: Context) : View(context) {
             val headScrY = sHEAD[1]
             seen += entity.id
 
-            val footScrX = sLFOOT?.get(0) ?: (sRFOOT?.get(0) ?: headScrX)
             val footScrY = sLFOOT?.get(1) ?: (sRFOOT?.get(1) ?: headScrY + 80f)
-
-            // Làm mượt tọa độ khung 60fps bằng EMA trong smoothFrames
-            val prevBox = smoothFrames[entity.id]
-            val sHeadX: Float
-            val sHeadY: Float
-            val sFootY: Float
-            if (prevBox == null ||
-                abs(headScrX - prevBox[2]) > dp(110f) ||
-                abs(headScrY - prevBox[3]) > dp(110f)
-            ) {
-                sHeadX = headScrX; sHeadY = headScrY; sFootY = footScrY
-            } else {
-                sHeadX = prevBox[2] + (headScrX - prevBox[2]) * boxAlphaSmooth
-                sHeadY = prevBox[3] + (headScrY - prevBox[3]) * boxAlphaSmooth
-                sFootY = prevBox[1] + (footScrY - prevBox[1]) * boxAlphaSmooth
-            }
-            smoothFrames[entity.id] = floatArrayOf(footScrX, sFootY, sHeadX, sHeadY)
 
             // ══ ĐƯỜNG CHỈ (chỉ vẽ khi lineEnabled = true) ════════════
             if (lineEnabled) {
-                drawSnapLine(canvas, W, sHeadX, sHeadY, skelColor)
+                drawSnapLine(canvas, W, headScrX, headScrY, skelColor)
             }
 
             // ══ KHUNG 4 CẠNH (chỉ vẽ khi boxEnabled = true) ══════════
             if (boxEnabled) {
-                drawCornerBox(canvas, sHeadX, sHeadY, sFootY, skelColor, alpha)
+                drawCornerBox(canvas, headScrX, headScrY, footScrY, skelColor, alpha)
             }
 
             // ══ MẮT THẦN: [ID] Xm + HP bar (chỉ vẽ khi espEnabled = true) ═
             if (espEnabled) {
                 val footRef2 = sLFOOT ?: sRFOOT
-                drawNameplate(canvas, entity, sHeadX, sHeadY - dp(22f), dist, skelColor, isTeammate, footRef2)
+                drawNameplate(canvas, entity, headScrX, headScrY - dp(22f), dist, skelColor, isTeammate, footRef2)
             }
         }
 
         poseFrames.keys.retainAll(seen)
-        smoothFrames.keys.retainAll(seen)
 
         // ══ RADAR: chỉ hiện chấm tròn khi radarEnabled = true ════════
         if (radarEnabled) {
@@ -662,7 +605,7 @@ object PacketProjection {
 
         val ex = wx - cx; val ey = wy - cy; val ez = wz - cz
         val depth = dx*ex + dy*ey + dz*ez
-        if (depth < 0.5f) return null
+        if (depth < 0.15f) return null
 
         // vFovHalfTan = tan(hFov/2) / 1.7778 (matches original line 76)
         val vFovHalfTan = (tan(Math.toRadians(hFovDeg * 0.5)) / 1.7777777777777778).toFloat()
