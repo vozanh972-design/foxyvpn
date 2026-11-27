@@ -91,6 +91,7 @@ data class GameOverlayState(
     val gamePriority: Boolean = true,
     val eagleEyeEnabled: Boolean = true,
     val boxEnabled: Boolean = false,
+    val radarEnabled: Boolean = false,
     val languageLabel: String = "Tiếng Việt",
     val isConnected: Boolean = true,
 )
@@ -123,6 +124,7 @@ fun GameOverlay(
     onBoostChange: (BoostState) -> Unit = {},
     onEagleEyeChange: (Boolean) -> Unit = {},
     onBoxChange: (Boolean) -> Unit = {},
+    onRadarChange: (Boolean) -> Unit = {},
     widthScale: Float = 0.75f,
     heightScale: Float = 1.10f,
     onSizeChange: (Float, Float) -> Unit = { _, _ -> },
@@ -158,7 +160,7 @@ fun GameOverlay(
                 when (tab) {
                     OverlayTab.Home -> HomeContent(state, onDisconnect, onPriorityChange, onServerClick, onLanguageClick, content)
                     OverlayTab.Boost -> BoostContent(boost, onBoostChange, content)
-                    OverlayTab.EagleEye -> EagleEyeContent(state.eagleEyeEnabled, state.boxEnabled, onEagleEyeChange, onBoxChange, content)
+                    OverlayTab.EagleEye -> EagleEyeContent(state.eagleEyeEnabled, state.boxEnabled, state.radarEnabled, onEagleEyeChange, onBoxChange, onRadarChange, content)
                     OverlayTab.Settings -> SettingsContent(widthScale, heightScale, onSizeChange, content)
                 }
             }
@@ -381,8 +383,10 @@ private fun ServerCard(state: GameOverlayState, onClick: () -> Unit) {
 private fun EagleEyeContent(
     enabled: Boolean,
     boxEnabled: Boolean,
+    radarEnabled: Boolean,
     onToggle: (Boolean) -> Unit,
     onBoxToggle: (Boolean) -> Unit,
+    onRadarToggle: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(modifier, verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -400,31 +404,53 @@ private fun EagleEyeContent(
                 contentAlignment = if (enabled) Alignment.CenterEnd else Alignment.CenterStart,
             ) { Box(Modifier.size(17.dp).background(Color.White, CircleShape)) }
         }
-        Box(
+        Column(
             Modifier.weight(1f).fillMaxWidth().clip(RoundedCornerShape(18.dp))
-                .background(if (enabled) Color.Black.copy(alpha = 0.25f) else Color.White.copy(alpha = 0.04f))
-                .border(1.dp, Color.White.copy(alpha = if (enabled) 0.10f else 0.04f), RoundedCornerShape(18.dp))
+                .background(if (enabled || boxEnabled || radarEnabled) Color.Black.copy(alpha = 0.25f) else Color.White.copy(alpha = 0.04f))
+                .border(1.dp, Color.White.copy(alpha = if (enabled || boxEnabled || radarEnabled) 0.10f else 0.04f), RoundedCornerShape(18.dp))
                 .padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            Row(
-                Modifier.fillMaxWidth().height(48.dp).clip(RoundedCornerShape(14.dp))
-                    .background(CardBg)
-                    .toggleable(value = boxEnabled, role = Role.Switch, onValueChange = onBoxToggle)
-                    .padding(horizontal = 14.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween,
-            ) {
-                Column {
-                    Text("Khung 4 cạnh (Box)", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                    Text("Hiện 4 góc quanh mục tiêu", color = Soft, fontSize = 11.sp)
-                }
-                Box(
-                    Modifier.size(40.dp, 22.dp).clip(RoundedCornerShape(11.dp))
-                        .background(if (boxEnabled) VeilColors.Accent else Color.White.copy(alpha = 0.18f)).padding(2.5.dp),
-                    contentAlignment = if (boxEnabled) Alignment.CenterEnd else Alignment.CenterStart,
-                ) { Box(Modifier.size(17.dp).background(Color.White, CircleShape)) }
-            }
+            EagleEyeOptionRow(
+                title = "Khung 4 cạnh (Box)",
+                subtitle = "Hiện 4 góc quanh mục tiêu",
+                checked = boxEnabled,
+                onToggle = onBoxToggle,
+            )
+            EagleEyeOptionRow(
+                title = "Radar",
+                subtitle = "Gom chấm tròn mục tiêu vào vòng radar",
+                checked = radarEnabled,
+                onToggle = onRadarToggle,
+            )
         }
+    }
+}
+
+@Composable
+private fun EagleEyeOptionRow(
+    title: String,
+    subtitle: String,
+    checked: Boolean,
+    onToggle: (Boolean) -> Unit,
+) {
+    Row(
+        Modifier.fillMaxWidth().height(48.dp).clip(RoundedCornerShape(14.dp))
+            .background(CardBg)
+            .toggleable(value = checked, role = Role.Switch, onValueChange = onToggle)
+            .padding(horizontal = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Column {
+            Text(title, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+            Text(subtitle, color = Soft, fontSize = 11.sp)
+        }
+        Box(
+            Modifier.size(40.dp, 22.dp).clip(RoundedCornerShape(11.dp))
+                .background(if (checked) VeilColors.Accent else Color.White.copy(alpha = 0.18f)).padding(2.5.dp),
+            contentAlignment = if (checked) Alignment.CenterEnd else Alignment.CenterStart,
+        ) { Box(Modifier.size(17.dp).background(Color.White, CircleShape)) }
     }
 }
 

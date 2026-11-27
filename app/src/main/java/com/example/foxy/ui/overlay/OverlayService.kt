@@ -153,6 +153,7 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner, ViewM
         // Lấy state hiện tại
         hud.espEnabled    = stateFlow.value.eagleEyeEnabled
         hud.boxEnabled    = stateFlow.value.boxEnabled
+        hud.radarEnabled  = stateFlow.value.radarEnabled
         hud.smoothEnabled = true
         hud.syncRenderLoop()
 
@@ -223,6 +224,11 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner, ViewM
                             // ═══ KHUNG 4 CẠNH (BOX) → bật/tắt độc lập ═══
                             stateFlow.update { it.copy(boxEnabled = checked) }
                             espHudView?.setBox(checked)
+                        },
+                        onRadarChange   = { checked ->
+                            // ═══ RADAR → bật/tắt độc lập ═══
+                            stateFlow.update { it.copy(radarEnabled = checked) }
+                            espHudView?.setRadar(checked)
                         },
                         widthScale      = widthScale,
                         heightScale     = heightScale,

@@ -40,7 +40,7 @@ class EspHudView(context: Context) : View(context) {
     @Volatile private var lastKnownLocalPlayer: EspEntityStore.Entity? = null
 
     private val isRenderActive: Boolean
-        get() = espEnabled || boxEnabled
+        get() = espEnabled || boxEnabled || radarEnabled
 
     // ─── Tốc độ render: target 60fps = 16ms, dùng Choreographer ──
     // postInvalidateOnAnimation() sync với vsync của màn hình thay vì invalidate() loop thô
@@ -83,6 +83,12 @@ class EspHudView(context: Context) : View(context) {
     /** Bật/tắt Khung 4 cạnh (Box) độc lập */
     fun setBox(on: Boolean) {
         boxEnabled = on
+        syncRenderLoop()
+    }
+
+    /** Bật/tắt Radar độc lập */
+    fun setRadar(on: Boolean) {
+        radarEnabled = on
         syncRenderLoop()
     }
 
@@ -204,7 +210,6 @@ class EspHudView(context: Context) : View(context) {
             }
 
             if (sHEAD == null) {
-                if (espEnabled) drawEdge(canvas, snapshot, entity, dist, W, H)
                 continue
             }
             val headScrX = sHEAD[0]
@@ -233,6 +238,11 @@ class EspHudView(context: Context) : View(context) {
 
         poseFrames.keys.retainAll(seen)
         smoothFrames.keys.retainAll(seen)
+
+        // ══ RADAR: chỉ hiện chấm tròn khi radarEnabled = true ════════
+        if (radarEnabled) {
+            drawRadar(canvas, snapshot, W, H)
+        }
     }
 
     // ─── drawSilhouette → chỉ vẽ khung 4 góc khi boxEnabled = true ──
@@ -358,51 +368,64 @@ class EspHudView(context: Context) : View(context) {
         canvas.drawRoundRect(RectF(hpL, hpT, hpL + hpW * hpRatio, hpB), dp(1f), dp(1f), paint)
     }
 
-    // ─── drawEdge: chấm rìa màn hình với màu team ────────────────
+    // ─── drawRadar: gom các chấm tròn vào Radar (chỉ hiện khi radarEnabled) ───
 
-    private fun drawEdge(
-        canvas: Canvas, snapshot: EspEntityStore.Snapshot,
-        entity: EspEntityStore.Entity, dist: Float, W: Float, H: Float,
-    ) {
+    private fun drawRadar(canvas: Canvas, snapshot: EspEntityStore.Snapshot, W: Float, H: Float) {
         val lp = snapshot.localPlayer ?: return
         val localTeam = lp.team
-        val isTeammate = localTeam >= 0 && entity.team == localTeam && entity.team != 0
-        val isKnocked  = entity.knocked
 
-        val relX  = entity.x - lp.x
-        val relZ  = entity.z - lp.z
-        val angle = atan2(
-            (relX * cos(snapshot.yawRadians) - relZ * sin(snapshot.yawRadians)).toDouble(),
-            (relX * sin(snapshot.yawRadians) + relZ * cos(snapshot.yawRadians)).toDouble()
-        ).toFloat()
+        val radius = dp(46f)
+        val cx = dp(62f)
+        val cy = dp(186f).coerceAtMost(H - radius - dp(16f))
+        val maxRange = 160f  // mét tối đa hiển thị trong vòng radar
 
-        val ex = (W * 0.5f + sin(angle) * (W * 0.5f - dp(24f))).coerceIn(dp(8f), W - dp(8f))
-        val ey = (H * 0.5f - cos(angle) * (H * 0.5f - dp(24f))).coerceIn(dp(8f), H - dp(8f))
-
-        // Màu chấm theo team
-        val dotColor = when {
-            isKnocked  -> Color.argb(lineAlpha, 255, 165,  0)  // Cam = knocked
-            isTeammate -> Color.argb(lineAlpha,  80, 160, 255) // Xanh = teammate
-            else       -> Color.argb(lineAlpha, 255,  60,  60) // Đỏ = địch
-        }
+        // Nền tròn tối bán trong suốt
         paint.style = Paint.Style.FILL
-        paint.color = dotColor
-        canvas.drawCircle(ex, ey, dp(3.5f), paint)
+        paint.color = Color.argb(145, 14, 20, 24)
+        canvas.drawCircle(cx, cy, radius, paint)
 
-        // Viền trắng mỏng quanh chấm
-        paint.style       = Paint.Style.STROKE
-        paint.strokeWidth = dp(0.8f)
-        paint.color       = Color.argb(120, 255, 255, 255)
-        canvas.drawCircle(ex, ey, dp(3.5f), paint)
+        // Viền ngoài + vòng trong
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = dp(1.2f)
+        paint.color = Color.argb(130, 255, 255, 255)
+        canvas.drawCircle(cx, cy, radius, paint)
 
-        // Khoảng cách (chỉ hiện Xm, bỏ tên)
-        text.typeface  = android.graphics.Typeface.DEFAULT_BOLD
-        text.textSize  = dp(8.5f)
-        text.textAlign = Paint.Align.CENTER
-        text.setShadowLayer(dp(1.5f), 0f, dp(1f), Color.BLACK)
-        text.color     = Color.argb(lineAlpha, 235, 235, 235)
-        canvas.drawText("${dist.toInt()}m", ex, ey + dp(13f), text)
-        text.clearShadowLayer()
+        paint.strokeWidth = dp(0.7f)
+        paint.color = Color.argb(45, 255, 255, 255)
+        canvas.drawCircle(cx, cy, radius * 0.5f, paint)
+        canvas.drawLine(cx - radius, cy, cx + radius, cy, paint)
+        canvas.drawLine(cx, cy - radius, cx, cy + radius, paint)
+
+        // Chấm bản thân ở tâm
+        paint.style = Paint.Style.FILL
+        paint.color = Color.WHITE
+        canvas.drawCircle(cx, cy, dp(2.6f), paint)
+
+        // Chấm tròn các entity trên radar (chỉ hiện chấm tròn, không chữ)
+        val maxDotOffset = radius - dp(3.5f)
+        for (entity in snapshot.entities) {
+            val relX = entity.x - lp.x
+            val relZ = entity.z - lp.z
+            val rot = PacketProjection.radar(relX, relZ, snapshot.yawRadians)
+            // rot[0] = right, rot[1] = forward
+            var dx = (rot[0] / maxRange) * radius
+            var dy = -(rot[1] / maxRange) * radius
+            val len = sqrt(dx * dx + dy * dy)
+            if (len > maxDotOffset && len > 0.001f) {
+                val scale = maxDotOffset / len
+                dx *= scale
+                dy *= scale
+            }
+
+            val isTeammate = localTeam >= 0 && entity.team == localTeam && entity.team != 0
+            paint.style = Paint.Style.FILL
+            paint.color = when {
+                entity.knocked -> Color.rgb(255, 165, 0)
+                isTeammate     -> Color.rgb(80, 180, 255)
+                else           -> Color.rgb(255, 55, 55)
+            }
+            canvas.drawCircle(cx + dx, cy + dy, dp(3f), paint)
+        }
     }
 
     // ─── Helpers ─────────────────────────────────────────────────
