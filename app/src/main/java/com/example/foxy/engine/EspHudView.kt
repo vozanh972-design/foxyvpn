@@ -25,6 +25,9 @@ class EspHudView(context: Context) : View(context) {
     @Volatile var espEnabled   = false
     @Volatile var boxEnabled   = false
     @Volatile var fovEnabled   = false
+    @Volatile var lineEnabled  = false
+    @Volatile var vpnConnected = false
+        private set
     @Volatile var fovRadiusDp  = 60f
     @Volatile var smoothEnabled = true
     // Alpha = 255 (fully opaque) — gốc dùng opacity(100) = min(255, round(100*2.55)) = 255
@@ -42,7 +45,7 @@ class EspHudView(context: Context) : View(context) {
     @Volatile private var lastKnownLocalPlayer: EspEntityStore.Entity? = null
 
     private val isRenderActive: Boolean
-        get() = espEnabled || boxEnabled || radarEnabled || fovEnabled
+        get() = espEnabled || boxEnabled || radarEnabled || fovEnabled || lineEnabled
 
     // ─── Tốc độ render: target 60fps = 16ms, dùng Choreographer ──
     // postInvalidateOnAnimation() sync với vsync của màn hình thay vì invalidate() loop thô
@@ -68,7 +71,7 @@ class EspHudView(context: Context) : View(context) {
         }
 
         if (effectiveSnap != null) {
-            if (espEnabled || boxEnabled || radarEnabled) drawEsp(canvas, effectiveSnap)
+            if (espEnabled || boxEnabled || radarEnabled || lineEnabled) drawEsp(canvas, effectiveSnap)
         } else {
             smoothFrames.clear()
             poseFrames.clear()
@@ -78,6 +81,11 @@ class EspHudView(context: Context) : View(context) {
         // Vòng tâm luôn căn giữa màn hình (hiển thị ngay cả khi chưa có snapshot để dễ căn chỉnh)
         if (fovEnabled) {
             drawFovCircle(canvas)
+        }
+
+        // Thông tin mặc định căn giữa trên cùng khi VPN đang kết nối
+        if (vpnConnected) {
+            drawInfoBanner(canvas)
         }
     }
 
@@ -109,6 +117,18 @@ class EspHudView(context: Context) : View(context) {
     fun setFovRadius(radiusDp: Float) {
         fovRadiusDp = radiusDp.coerceIn(20f, 180f)
         if (fovEnabled) invalidate()
+    }
+
+    /** Bật/tắt Đường chỉ (Line) độc lập */
+    fun setLine(on: Boolean) {
+        lineEnabled = on
+        syncRenderLoop()
+    }
+
+    /** Cập nhật trạng thái VPN để hiện/ẩn dòng thông tin trên cùng */
+    fun setVpnConnected(connected: Boolean) {
+        vpnConnected = connected
+        postInvalidate()
     }
 
     fun syncRenderLoop() {
@@ -239,6 +259,11 @@ class EspHudView(context: Context) : View(context) {
             val footScrY = sLFOOT?.get(1) ?: (sRFOOT?.get(1) ?: headScrY + 80f)
             smoothFrames[entity.id] = floatArrayOf(footScrX, footScrY, headScrX, headScrY)
 
+            // ══ ĐƯỜNG CHỈ (chỉ vẽ khi lineEnabled = true) ════════════
+            if (lineEnabled) {
+                drawSnapLine(canvas, W, headScrX, headScrY, skelColor)
+            }
+
             // ══ KHUNG 4 CẠNH (chỉ vẽ khi boxEnabled = true) ══════════
             if (boxEnabled) {
                 drawSilhouette(canvas, entity,
@@ -276,6 +301,32 @@ class EspHudView(context: Context) : View(context) {
         paint.strokeWidth = dp(1.2f)
         paint.color = Color.argb(175, 255, 255, 255)
         canvas.drawCircle(cx, cy, r, paint)
+    }
+
+    // ─── drawSnapLine: đường chỉ từ đỉnh giữa màn hình tới đầu mục tiêu ──
+
+    private fun drawSnapLine(canvas: Canvas, W: Float, hx: Float, hy: Float, skelColor: Int) {
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = dp(1.2f)
+        paint.color = Color.argb(
+            (lineAlpha * 0.85f).toInt(),
+            Color.red(skelColor), Color.green(skelColor), Color.blue(skelColor)
+        )
+        canvas.drawLine(W * 0.5f, dp(44f), hx, hy, paint)
+    }
+
+    // ─── drawInfoBanner: dòng chữ trắng căn giữa trên cùng khi bật VPN ──
+
+    private fun drawInfoBanner(canvas: Canvas) {
+        val cx = width * 0.5f
+        if (cx <= 0f) return
+        text.typeface = android.graphics.Typeface.DEFAULT_BOLD
+        text.textSize = dp(10f)
+        text.textAlign = Paint.Align.CENTER
+        text.color = Color.WHITE
+        text.setShadowLayer(dp(2f), 0f, dp(1f), Color.BLACK)
+        canvas.drawText("[ TELEGRAM : t.me/lunexchitgamee ]", cx, dp(18f), text)
+        text.clearShadowLayer()
     }
 
     // ─── drawSilhouette → chỉ vẽ khung 4 góc khi boxEnabled = true ──

@@ -96,6 +96,7 @@ data class GameOverlayState(
     val radarEnabled: Boolean = false,
     val fovEnabled: Boolean = false,
     val fovRadiusDp: Float = 60f,
+    val lineEnabled: Boolean = false,
     val languageLabel: String = "Tiếng Việt",
     val isConnected: Boolean = true,
 )
@@ -131,6 +132,7 @@ fun GameOverlay(
     onRadarChange: (Boolean) -> Unit = {},
     onFovChange: (Boolean) -> Unit = {},
     onFovRadiusChange: (Float) -> Unit = {},
+    onLineChange: (Boolean) -> Unit = {},
     widthScale: Float = 0.75f,
     heightScale: Float = 1.10f,
     onSizeChange: (Float, Float) -> Unit = { _, _ -> },
@@ -172,11 +174,13 @@ fun GameOverlay(
                         radarEnabled = state.radarEnabled,
                         fovEnabled = state.fovEnabled,
                         fovRadiusDp = state.fovRadiusDp,
+                        lineEnabled = state.lineEnabled,
                         onToggle = onEagleEyeChange,
                         onBoxToggle = onBoxChange,
                         onRadarToggle = onRadarChange,
                         onFovToggle = onFovChange,
                         onFovRadiusChange = onFovRadiusChange,
+                        onLineToggle = onLineChange,
                         modifier = content,
                     )
                     OverlayTab.Settings -> SettingsContent(widthScale, heightScale, onSizeChange, content)
@@ -404,14 +408,16 @@ private fun EagleEyeContent(
     radarEnabled: Boolean,
     fovEnabled: Boolean,
     fovRadiusDp: Float,
+    lineEnabled: Boolean,
     onToggle: (Boolean) -> Unit,
     onBoxToggle: (Boolean) -> Unit,
     onRadarToggle: (Boolean) -> Unit,
     onFovToggle: (Boolean) -> Unit,
     onFovRadiusChange: (Float) -> Unit,
+    onLineToggle: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val anyActive = enabled || boxEnabled || radarEnabled || fovEnabled
+    val anyActive = enabled || boxEnabled || radarEnabled || fovEnabled || lineEnabled
     val view = LocalView.current
     Column(modifier, verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Row(
@@ -488,6 +494,12 @@ private fun EagleEyeContent(
                     )
                 }
             }
+            EagleEyeOptionRow(
+                title = "Đường chỉ (Line)",
+                subtitle = "Kẻ đường nối tới mục tiêu",
+                checked = lineEnabled,
+                onToggle = onLineToggle,
+            )
         }
     }
 }

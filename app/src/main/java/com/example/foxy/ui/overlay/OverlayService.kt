@@ -118,6 +118,7 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner, ViewM
             if (intent?.action == FreefireVpnService.BROADCAST_STATE) {
                 val connected = intent.getBooleanExtra(FreefireVpnService.EXTRA_CONNECTED, false)
                 stateFlow.update { it.copy(isConnected = connected) }
+                espHudView?.setVpnConnected(connected)
             }
         }
     }
@@ -155,6 +156,8 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner, ViewM
         hud.boxEnabled    = stateFlow.value.boxEnabled
         hud.radarEnabled  = stateFlow.value.radarEnabled
         hud.fovEnabled    = stateFlow.value.fovEnabled
+        hud.lineEnabled   = stateFlow.value.lineEnabled
+        hud.setVpnConnected(stateFlow.value.isConnected)
         hud.fovRadiusDp   = stateFlow.value.fovRadiusDp
         hud.smoothEnabled = true
         hud.syncRenderLoop()
@@ -191,6 +194,7 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner, ViewM
                                     action = FreefireVpnService.ACTION_STOP
                                 })
                                 stateFlow.update { it.copy(isConnected = false) }
+                                espHudView?.setVpnConnected(false)
                             } else {
                                 // Đã ngắt -> bật kết nối lại
                                 ContextCompat.startForegroundService(
@@ -200,6 +204,7 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner, ViewM
                                     }
                                 )
                                 stateFlow.update { it.copy(isConnected = true) }
+                                espHudView?.setVpnConnected(true)
                             }
                         },
                         onDismissOverlay= { stopSelf() },
@@ -240,6 +245,11 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner, ViewM
                         onFovRadiusChange = { radiusDp ->
                             stateFlow.update { it.copy(fovRadiusDp = radiusDp) }
                             espHudView?.setFovRadius(radiusDp)
+                        },
+                        onLineChange    = { checked ->
+                            // ═══ ĐƯỜNG CHỈ (LINE) → bật/tắt độc lập ═══
+                            stateFlow.update { it.copy(lineEnabled = checked) }
+                            espHudView?.setLine(checked)
                         },
                         widthScale      = widthScale,
                         heightScale     = heightScale,
