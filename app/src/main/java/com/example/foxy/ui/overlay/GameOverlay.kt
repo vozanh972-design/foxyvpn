@@ -196,24 +196,15 @@ fun GameOverlay(
 private fun HomeContent(
     state: GameOverlayState,
     onDisconnect: () -> Unit,
-    onPriorityChange: (Boolean) -> Unit,
+    @Suppress("UNUSED_PARAMETER") onPriorityChange: (Boolean) -> Unit,
     onServerClick: () -> Unit,
-    onLanguageClick: () -> Unit,
+    @Suppress("UNUSED_PARAMETER") onLanguageClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Row(modifier, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            PingHero(state, Modifier.weight(1f).fillMaxWidth())
-            Row(Modifier.fillMaxWidth().height(76.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                PriorityCard(state.gamePriority, onPriorityChange, Modifier.weight(1f))
-                LanguageCard(state.languageLabel, onLanguageClick, Modifier.weight(1f))
-            }
-        }
-        Column(Modifier.width(236.dp).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            ServerCard(state, onServerClick)
-            StatsCard(state, Modifier.weight(1f))
-            DisconnectButton(state.isConnected, onDisconnect)
-        }
+    Column(modifier.fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        ServerCard(state, onServerClick)
+        StatsCard(state, Modifier.weight(1f))
+        DisconnectButton(state.isConnected, onDisconnect)
     }
 }
 
